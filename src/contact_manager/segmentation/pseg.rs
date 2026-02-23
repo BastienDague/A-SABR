@@ -11,9 +11,11 @@ use crate::{
     types::{DataRate, Date, Duration, Priority},
 };
 
+/// Priority-aware segmentation manager. Tracks bandwidth availability per priority level
+/// using booking intervals.
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub struct PSegmentationManager {
-    /// A list of segments representing free intervals available for transmission.
+    /// A list of segments tracking the priority level booked for each time interval.
     booking: Vec<Segment<Priority>>,
     /// A list of segments representing different data rates during contact intervals.
     rate_intervals: Vec<Segment<DataRate>>,
@@ -51,6 +53,17 @@ impl BaseSegmentationManager for PSegmentationManager {
 }
 
 impl ContactManager for PSegmentationManager {
+    /// Simulates the transmission of a bundle based on the contact data and bundle priority.
+    ///
+    /// # Arguments
+    ///
+    /// * `_contact_data` - Reference to the contact information (unused in this implementation).
+    /// * `at_time` - The current time for scheduling purposes.
+    /// * `bundle` - The bundle to be transmitted.
+    ///
+    /// # Returns
+    ///
+    /// Optionally returns `ContactManagerTxData` with transmission start and end times, or `None` if the bundle can't be transmitted.
     fn dry_run_tx(
         &self,
         contact_data: &ContactInfo,
@@ -117,6 +130,19 @@ impl ContactManager for PSegmentationManager {
         None
     }
 
+    /// Schedule the transmission of a bundle by updating the booking intervals with the bundle's priority.
+    ///
+    /// This method shall be called after a dry run ! Implementations might not ensure a clean behavior otherwise.
+    ///
+    /// # Arguments
+    ///
+    /// * `_contact_data` - Reference to the contact information (unused in this implementation).
+    /// * `at_time` - The current time for scheduling purposes.
+    /// * `bundle` - The bundle to be transmitted.
+    ///
+    /// # Returns
+    ///
+    /// Optionally returns `ContactManagerTxData` with transmission start and end times, or `None` if the bundle can't be transmitted.
     fn schedule_tx(
         &mut self,
         contact_data: &ContactInfo,
@@ -207,14 +233,13 @@ impl ContactManager for PSegmentationManager {
     }
 }
 
-/// Implements the `Parser` trait for `SegmentationManager`, allowing the manager to be parsed from a lexer.
+/// Implements the `Parser` trait for `PSegmentationManager`, allowing the manager to be parsed from a lexer.
 impl Parser<PSegmentationManager> for PSegmentationManager {
-    /// Parses a `SegmentationManager` from the lexer, extracting the rate and delay intervals.
+    /// Parses a `PSegmentationManager` from the lexer, extracting the rate and delay intervals.
     ///
     /// # Arguments
     ///
     /// * `lexer` - The lexer used for parsing tokens.
-    /// * `_sub` - An optional map for handling custom parsing logic (unused here).
     ///
     /// # Returns
     ///
@@ -573,7 +598,7 @@ mod tests{
             }
         ];
         let mut mgr = setup_manager(rate_segments, delay_segments);
-        let contatc_info = mock_contact_info();
+        let contact_info = mock_contact_info();
 
         let bundle = Bundle{
             source: 0,
@@ -582,7 +607,7 @@ mod tests{
             size: 3000.0,
             expiration: 200.0
         };
-        let result = mgr.schedule_tx(&contatc_info, 20.0, &bundle);
+        let result = mgr.schedule_tx(&contact_info, 20.0, &bundle);
         assert!(result.is_some(),"Bundle should have been added.");
     }
 
