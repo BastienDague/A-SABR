@@ -19,7 +19,6 @@ fn main() {
             return;
         }
     };
-
     let (nodes, contacts) = match ASABRContactPlan::parse::<NoManagement, SegmentationManager>(
         &mut my_lexer,
         None,
@@ -31,6 +30,5 @@ fn main() {
             return;
         }
     };
-
     println!("CP:\n{:#?}", (&nodes, &contacts));
 }

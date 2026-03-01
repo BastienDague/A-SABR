@@ -254,3 +254,172 @@ fn try_make_hop<NM: NodeManager, CM: ContactManager>(
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bundle::Bundle;
+    use crate::contact::Contact;
+    use crate::contact::ContactInfo;
+    use crate::contact_manager::segmentation::Segment;
+    use crate::contact_manager::segmentation::pseg::PSegmentationManager;
+    use crate::node::Node;
+    use crate::node::NodeInfo;
+    use crate::node_manager::none::NoManagement;
+    use crate::route_stage::RouteStage;
+    // use crate::types::Date;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    // Attempts to make a hop (i.e., a transmission between nodes) for the given route stage and bundle,
+    // checking potential contacts to determine the best hop.
+    //
+    // # Parameters
+    //
+    // * `first_contact_index` - The index of the first contact to consider (lazy pruning).
+    // * `sndr_route` - A reference-counted, mutable `RouteStage` that represents the sender's current route.
+    // * `bundle` - A reference to the `Bundle` that is being routed.
+    // * `contacts` - A vector of reference-counted, mutable `Contact`s representing available transmission opportunities.
+    // * `tx_node` - A reference-counted, mutable `Node` representing the transmitting node.
+    // * `rx_node` - A reference-counted, mutable `Node` representing the receiving node.
+    //
+    // # Returns
+    //
+    // An `Option` containing a `RouteStage` if a suitable hop is found, or `None` if no valid hop is available.
+    //
+    // ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //
+    //  fn try_make_hop<NM: NodeManager, CM: ContactManager>(
+    //     first_contact_index: usize,
+    //     sndr_route: &SharedRouteStage<NM, CM>,
+    //     _bundle: &Bundle,
+    //     contacts: &[Rc<RefCell<Contact<NM, CM>>>],
+    //     tx_node: &Rc<RefCell<Node<NM>>>,
+    //     rx_node: &Rc<RefCell<Node<NM>>>,
+    // ) -> Option<RouteStage<NM, CM>>
+
+    #[test]
+    fn test_empty_contacts() {
+        let bundle = Bundle {
+            source: 0,
+            destinations: vec![1],
+            priority: 1,
+            size: 1.0,
+            expiration: 2000.0,
+        };
+
+        let source: Rc<RefCell<RouteStage<NoManagement, PSegmentationManager>>> =
+            Rc::new(RefCell::new(RouteStage::new(
+                0.0,
+                0,
+                None,
+                #[cfg(feature = "node_proc")]
+                bundle.clone(),
+            )));
+
+        let tx_node: Rc<RefCell<Node<NoManagement>>> = Rc::new(RefCell::new(
+            Node::try_new(
+                NodeInfo {
+                    id: 0,
+                    name: "A".into(),
+                    excluded: false,
+                },
+                NoManagement {},
+            )
+            .unwrap(),
+        ));
+
+        let rx_node: Rc<RefCell<Node<NoManagement>>> = Rc::new(RefCell::new(
+            Node::try_new(
+                NodeInfo {
+                    id: 1,
+                    name: "B".into(),
+                    excluded: false,
+                },
+                NoManagement {},
+            )
+            .unwrap(),
+        ));
+
+        let result: Option<RouteStage<NoManagement, PSegmentationManager>> =
+            try_make_hop(0, &source, &bundle, &[], &tx_node, &rx_node);
+
+        assert!(
+            result.is_none(),
+            "TEST FAILED: Expected None when contacts list is empty."
+        );
+    }
+
+    #[test]
+    fn test_first_contact_index_beyond_slice_returns_none() {
+        let bundle = Bundle {
+            source: 0,
+            destinations: vec![1],
+            priority: 1,
+            size: 1.0,
+            expiration: 2000.0,
+        };
+
+        let source: Rc<RefCell<RouteStage<NoManagement, PSegmentationManager>>> =
+            Rc::new(RefCell::new(RouteStage::new(
+                0.0,
+                0,
+                None,
+                #[cfg(feature = "node_proc")]
+                bundle.clone(),
+            )));
+
+        let tx_node: Rc<RefCell<Node<NoManagement>>> = Rc::new(RefCell::new(
+            Node::try_new(
+                NodeInfo {
+                    id: 0,
+                    name: "A".into(),
+                    excluded: false,
+                },
+                NoManagement {},
+            )
+            .unwrap(),
+        ));
+
+        let rx_node: Rc<RefCell<Node<NoManagement>>> = Rc::new(RefCell::new(
+            Node::try_new(
+                NodeInfo {
+                    id: 1,
+                    name: "B".into(),
+                    excluded: false,
+                },
+                NoManagement {},
+            )
+            .unwrap(),
+        ));
+
+        let rates: Vec<Segment<f64>> = vec![Segment {
+            start: 0.0,
+            end: 200.0,
+            val: 100.0,
+        }];
+
+        let delays: Vec<Segment<f64>> = vec![Segment {
+            start: 0.0,
+            end: 200.0,
+            val: 1.0,
+        }];
+
+        let contact: Rc<RefCell<Contact<NoManagement, PSegmentationManager>>> =
+            Rc::new(RefCell::new(
+                Contact::try_new(
+                    ContactInfo::new(0, 1, 0.0, 200.0),
+                    PSegmentationManager::new(rates, delays),
+                )
+                .expect("Contact creation failed"),
+            ));
+
+        let result: Option<RouteStage<NoManagement, PSegmentationManager>> =
+            try_make_hop(1, &source, &bundle, &[contact], &tx_node, &rx_node);
+
+        assert!(
+            result.is_none(),
+            "TEST FAILED: Expected None when first_contact_index is beyond the slice"
+        );
+    }
+}
