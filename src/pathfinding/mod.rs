@@ -295,13 +295,13 @@ mod tests {
         }
     }
 
-    fn make_source(at_time: Date, node_id: u16, bundle: &Bundle) -> SharedRouteStage<NoManagement, PSegmentationManager> {
+    fn make_source(at_time: Date, node_id: u16, _bundle: &Bundle) -> SharedRouteStage<NoManagement, PSegmentationManager> {
         Rc::new(RefCell::new(RouteStage::new(
             at_time,
             node_id,
             None,
             #[cfg(feature = "node_proc")]
-            bundle.clone(),
+            _bundle.clone(),
         )))
     }
 
@@ -345,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_contacts_returns_none() {
+    fn test_empty_contacts() {
         let bundle: Bundle = make_bundle(1.0);
         let source: Rc<RefCell<RouteStage<NoManagement, PSegmentationManager>>> = make_source(0.0, 0, &bundle);
         let tx_node: Rc<RefCell<Node<NoManagement>>> = make_node(0);
@@ -367,5 +367,18 @@ mod tests {
         let result: Option<RouteStage<NoManagement, PSegmentationManager>> = start_test(1, &source, &bundle, &contacts, &tx, &rx);
 
         assert!(result.is_none(), "TEST FAILED: Expected None when first_contact_index is beyond the slice.");
+    }
+
+    #[test]
+    fn test_bundle_too_large() {
+        let bundle  = make_bundle(999_999.0);
+        let source  = make_source(0.0, 0, &bundle);
+        let tx = make_node(0);
+        let rx = make_node(1);
+        let contacts = vec![make_contact(0, 1, 0.0, 200.0, 100.0, 1.0)];
+
+        let result = start_test(0, &source, &bundle, &contacts, &tx, &rx);
+
+        assert!(result.is_none(), "TEST FAILED: Expected None when the bundle size exceeds contact capacity.");
     }
 }

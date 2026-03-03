@@ -4,8 +4,8 @@ use crate::{
     bundle::Bundle,
     contact::ContactInfo,
     contact_manager::{
-        ContactManager, ContactManagerTxData,
         segmentation::{BaseSegmentationManager, Segment},
+        ContactManager, ContactManagerTxData,
     },
     parsing::{Lexer, Parser, ParsingState},
     types::{DataRate, Date, Duration, Priority},
@@ -98,6 +98,17 @@ impl ContactManager for PSegmentationManager {
                         bundle.size,
                         contact_data.end,
                     ) {
+                    if tx_end < seg.end{
+                        let delay = super::get_delay(tx_end,&self.delay_intervals);
+                        return Some(ContactManagerTxData{
+                            tx_start,
+                            tx_end,
+                            delay,
+                            expiration: seg.end,
+                            arrival: tx_end + delay,
+
+                        })
+                    }
                         tx_end_opt = Some(tx_end);
                     };
                 }
