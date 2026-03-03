@@ -381,4 +381,17 @@ mod tests {
 
         assert!(result.is_none(), "TEST FAILED: Expected None when the bundle size exceeds contact capacity.");
     }
+
+    #[test]
+    fn test_single_contact_valid() {
+        let bundle  = make_bundle(50.0);
+        let source  = make_source(0.0, 0, &bundle);
+        let tx = make_node(0);
+        let rx = make_node(1);
+        let contacts = vec![make_contact(0, 1, 0.0, 200.0, 100.0, 1.0)];
+
+        let result = start_test(0, &source, &bundle, &contacts, &tx, &rx);
+
+        assert!(result.is_some(), "TEST FAILED: Expected Some when the contact is valid and the bundle size is within contact capacity.");
+    }
 }
