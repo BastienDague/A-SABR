@@ -247,7 +247,7 @@ mod tests{
     }
 
     #[track_caller]
-    fn start_test(input: Vec<InputSeg>, output: Vec<OutputSeg>, bundle: Bundle, at_time: f64){
+    fn start_test(input: Vec<InputSeg>, output: Vec<OutputSeg>, bundles: Vec<Bundle>, at_time: f64){
 
         let contact_info = ContactInfo::new(0, 1, 0.0, 200.0);
         let mut delay_segments: Vec<Segment<Date>> = Vec::new();
@@ -263,9 +263,14 @@ mod tests{
         manager.try_init(&contact_info);
 
         //dry_run_tx / schedule_tx matching test
-        let dry_run_res = manager.dry_run_tx(&contact_info, at_time, &bundle).unwrap();
-        let schedule_tx_res = manager.schedule_tx(&contact_info, at_time, &bundle).unwrap();
-        assert_eq!(dry_run_res, schedule_tx_res, "TEST FAILED: dry_run and schedule_tx doesn't match.");
+        let mut i: i32 = 1;
+        for bundle in bundles{
+            let dry_run_res = manager.dry_run_tx(&contact_info, at_time, &bundle).unwrap();
+            let schedule_tx_res = manager.schedule_tx(&contact_info, at_time, &bundle).unwrap();
+            assert_eq!(dry_run_res, schedule_tx_res, "TEST N°{i} FAILED: dry_run and schedule_tx doesn't match.\n");
+            i+=1;
+        }
+        
 
         //Building actual output
         let mut actual_output = Vec::new();
@@ -286,8 +291,9 @@ mod tests{
             expiration: 1000.0,
         }; 
         let input = vec![InputSeg::Delay(0.0,200.0,4.0), InputSeg::Rate(0.0,200.0,100.0)];
+
         let output1 = vec![OutputSeg::Booking(0.0,1.0,1), OutputSeg::Booking(1.0, 200.0, -1)];
-        start_test(input.clone(),output1,bundle1, 0.0);
+        start_test(input.clone(),output1,vec![bundle1], 0.0);
         // Time (T) : 0 .................................................... 200
         // Network  : [------------------------------------------------------]
         //            (Rate and Delay continuously available)
@@ -311,7 +317,7 @@ mod tests{
         OutputSeg::Booking(80.0,120.0,1),
         OutputSeg::Booking(120.0,200.0,-1),
         ];
-        start_test(input, output2, bundle2, 80.0);
+        start_test(input.clone(), output2, vec![bundle2], 80.0);
         // =====================================================================
         // SCENARIO: Future Insertion (at_time = 80.0)
         // Request: Bundle 2 (Size 4000, Prio 1, at T=80.0) -> Needs 40.0s
@@ -327,6 +333,20 @@ mod tests{
         // Priority :             -1                  1              -1
         //                     (0 to 80)         (80 to 120)    (120 to 200)
         // =====================================================================
+
+        let bundle3 = Bundle{
+            source: 0,
+            destinations: vec![1],
+            priority: 2,
+            size: 5000.0,
+            expiration: 1000.0,
+        };
+        let output3 = vec![
+            OutputSeg::Booking(0.0,150.0,-1),
+            OutputSeg::Booking(150.0, 200.0, 2),
+        ];
+        start_test(input, output3, vec![bundle3], 150.0);
+
 
 
 
