@@ -265,13 +265,86 @@ mod tests {
     use crate::contact_manager::segmentation::pseg::PSegmentationManager;
     use crate::node::Node;
     use crate::node::NodeInfo;
+    use crate::node_manager::NodeManager;
     use crate::node_manager::none::NoManagement;
     use crate::route_stage::RouteStage;
     use crate::types::Date;
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    fn make_node(id: u16) -> Rc<RefCell<Node<NoManagement>>> {
+    #[derive(Debug)]
+    struct MockNodeManager {
+        tx_ok: bool,
+        rx_ok: bool,
+        process_output: Date,
+    }
+
+    impl MockNodeManager {
+        fn accepting() -> Self {
+            Self {
+                tx_ok: true,
+                rx_ok: true,
+                process_output: 0.0,
+            }
+        }
+        #[cfg(feature = "node_tx")]
+        fn refusing_tx() -> Self {
+            Self {
+                tx_ok: false,
+                rx_ok: true,
+                process_output: 0.0,
+            }
+        }
+        #[cfg(feature = "node_rx")]
+        fn refusing_rx() -> Self {
+            Self {
+                tx_ok: true,
+                rx_ok: false,
+                process_output: 0.0,
+            }
+        }
+    }
+
+    impl NodeManager for MockNodeManager {
+        #[cfg(feature = "node_proc")]
+        fn dry_run_process(&self, _at_time: Date, _bundle: &mut Bundle) -> Date {
+            self.process_output
+        }
+        #[cfg(feature = "node_proc")]
+        fn schedule_process(&self, _at_time: Date, _bundle: &mut Bundle) -> Date {
+            unimplemented!("Not needed in tests")
+        }
+        #[cfg(feature = "node_tx")]
+        fn dry_run_tx(
+            &self,
+            _waiting_since: Date,
+            _start: Date,
+            _end: Date,
+            _bundle: &Bundle,
+        ) -> bool {
+            self.tx_ok
+        }
+        #[cfg(feature = "node_tx")]
+        fn schedule_tx(
+            &mut self,
+            _waiting_since: Date,
+            _start: Date,
+            _end: Date,
+            _bundle: &Bundle,
+        ) -> bool {
+            unimplemented!("Not needed in tests")
+        }
+        #[cfg(feature = "node_rx")]
+        fn dry_run_rx(&self, _start: Date, _end: Date, _bundle: &Bundle) -> bool {
+            self.rx_ok
+        }
+        #[cfg(feature = "node_rx")]
+        fn schedule_rx(&mut self, _start: Date, _end: Date, _bundle: &Bundle) -> bool {
+            unimplemented!("Not needed in tests")
+        }
+    }
+
+    fn make_node<NM: NodeManager>(id: u16, nm: NM) -> Rc<RefCell<Node<NM>>> {
         Rc::new(RefCell::new(
             Node::try_new(
                 NodeInfo {
@@ -279,7 +352,7 @@ mod tests {
                     name: format!("N{id}"),
                     excluded: false,
                 },
-                NoManagement {},
+                nm,
             )
             .unwrap(),
         ))
@@ -295,7 +368,11 @@ mod tests {
         }
     }
 
-    fn make_source(at_time: Date, node_id: u16, _bundle: &Bundle) -> SharedRouteStage<NoManagement, PSegmentationManager> {
+    fn make_source<NM: NodeManager>(
+        at_time: Date,
+        node_id: u16,
+        _bundle: &Bundle,
+    ) -> SharedRouteStage<NM, PSegmentationManager> {
         Rc::new(RefCell::new(RouteStage::new(
             at_time,
             node_id,
@@ -305,14 +382,14 @@ mod tests {
         )))
     }
 
-    fn make_contact(
+    fn make_contact<NM: NodeManager>(
         tx_id: u16,
         rx_id: u16,
         start: Date,
         end: Date,
         rate: f64,
         delay: f64,
-    ) -> Rc<RefCell<Contact<NoManagement, PSegmentationManager>>> {
+    ) -> Rc<RefCell<Contact<NM, PSegmentationManager>>> {
         let rates = vec![Segment {
             start,
             end,
@@ -333,75 +410,91 @@ mod tests {
     }
 
     #[track_caller]
-    fn start_test(
+    fn start_test<NM: NodeManager>(
         first_contact_index: usize,
-        source: &SharedRouteStage<NoManagement, PSegmentationManager>,
+        source: &SharedRouteStage<NM, PSegmentationManager>,
         bundle: &Bundle,
-        contacts: &[Rc<RefCell<Contact<NoManagement, PSegmentationManager>>>],
-        tx: &Rc<RefCell<Node<NoManagement>>>,
-        rx: &Rc<RefCell<Node<NoManagement>>>,
-    ) -> Option<RouteStage<NoManagement, PSegmentationManager>> {
+        contacts: &[Rc<RefCell<Contact<NM, PSegmentationManager>>>],
+        tx: &Rc<RefCell<Node<NM>>>,
+        rx: &Rc<RefCell<Node<NM>>>,
+    ) -> Option<RouteStage<NM, PSegmentationManager>> {
         try_make_hop(first_contact_index, source, bundle, contacts, tx, rx)
     }
 
     #[test]
     fn test_empty_contacts() {
         let bundle: Bundle = make_bundle(1.0);
-        let source: Rc<RefCell<RouteStage<NoManagement, PSegmentationManager>>> = make_source(0.0, 0, &bundle);
-        let tx: Rc<RefCell<Node<NoManagement>>> = make_node(0);
-        let rx: Rc<RefCell<Node<NoManagement>>> = make_node(1);
+        let source = make_source(0.0, 0, &bundle);
+        let tx: Rc<RefCell<Node<NoManagement>>> = make_node(0, NoManagement {});
+        let rx: Rc<RefCell<Node<NoManagement>>> = make_node(1, NoManagement {});
 
-        let result: Option<RouteStage<NoManagement, PSegmentationManager>> = start_test(0, &source, &bundle, &[], &tx, &rx);
+        let result: Option<RouteStage<NoManagement, PSegmentationManager>> =
+            start_test(0, &source, &bundle, &[], &tx, &rx);
 
-        assert!(result.is_none(), "TEST FAILED: Expected None when contacts list is empty.");
+        assert!(
+            result.is_none(),
+            "TEST FAILED: Expected None when contacts list is empty."
+        );
     }
 
     #[test]
     fn test_first_contact_index_beyond_slice() {
         let bundle: Bundle = make_bundle(1.0);
-        let source: Rc<RefCell<RouteStage<NoManagement, PSegmentationManager>>> = make_source(0.0, 0, &bundle);
-        let tx: Rc<RefCell<Node<NoManagement>>> = make_node(0);
-        let rx: Rc<RefCell<Node<NoManagement>>> = make_node(1);
-        let contacts: Vec<Rc<RefCell<Contact<NoManagement, PSegmentationManager>>>> = vec![make_contact(0, 1, 0.0, 200.0, 100.0, 1.0)];
+        let source: Rc<RefCell<RouteStage<NoManagement, PSegmentationManager>>> =
+            make_source(0.0, 0, &bundle);
+        let tx: Rc<RefCell<Node<NoManagement>>> = make_node(0, NoManagement {});
+        let rx: Rc<RefCell<Node<NoManagement>>> = make_node(1, NoManagement {});
+        let contacts: Vec<Rc<RefCell<Contact<NoManagement, PSegmentationManager>>>> =
+            vec![make_contact(0, 1, 0.0, 200.0, 100.0, 1.0)];
 
-        let result: Option<RouteStage<NoManagement, PSegmentationManager>> = start_test(1, &source, &bundle, &contacts, &tx, &rx);
+        let result: Option<RouteStage<NoManagement, PSegmentationManager>> =
+            start_test(1, &source, &bundle, &contacts, &tx, &rx);
 
-        assert!(result.is_none(), "TEST FAILED: Expected None when first_contact_index is beyond the slice.");
+        assert!(
+            result.is_none(),
+            "TEST FAILED: Expected None when first_contact_index is beyond the slice."
+        );
     }
 
     #[test]
     fn test_bundle_too_large() {
-        let bundle  = make_bundle(999_999.0);
-        let source  = make_source(0.0, 0, &bundle);
-        let tx = make_node(0);
-        let rx = make_node(1);
+        let bundle = make_bundle(999_999.0);
+        let source = make_source(0.0, 0, &bundle);
+        let tx = make_node(0, NoManagement {});
+        let rx = make_node(1, NoManagement {});
         let contacts = vec![make_contact(0, 1, 0.0, 200.0, 100.0, 1.0)];
 
         let result = start_test(0, &source, &bundle, &contacts, &tx, &rx);
 
-        assert!(result.is_none(), "TEST FAILED: Expected None when the bundle size exceeds contact capacity.");
+        assert!(
+            result.is_none(),
+            "TEST FAILED: Expected None when the bundle size exceeds contact capacity."
+        );
     }
 
     #[test]
     fn test_single_contact_valid() {
-        let bundle  = make_bundle(50.0);
-        let source  = make_source(0.0, 0, &bundle);
-        let tx = make_node(0);
-        let rx = make_node(1);
+        let bundle = make_bundle(50.0);
+        let source = make_source(0.0, 0, &bundle);
+        let tx = make_node(0, NoManagement {});
+        let rx = make_node(1, NoManagement {});
         let contacts = vec![make_contact(0, 1, 0.0, 200.0, 100.0, 1.0)];
 
         let result = start_test(0, &source, &bundle, &contacts, &tx, &rx);
 
-        assert!(result.is_some(), "TEST FAILED: Expected Some when the contact is valid and the bundle size is within contact capacity.");
+        assert!(
+            result.is_some(),
+            "TEST FAILED: Expected Some when the contact is valid and the bundle size is within contact capacity."
+        );
     }
 
     #[cfg(feature = "contact_suppression")]
     #[test]
-    fn test_all_contacts_supressed(){
+    fn test_all_contacts_supressed() {
         let bundle = make_bundle(30.0);
         let source = make_source(0.0, 0, &bundle);
-        let tx = make_node(0);
-        let rx = make_node(1);
+        let tx = make_node(0, NoManagement {});
+        let rx = make_node(1, NoManagement {});
         let contact1 = make_contact(0, 1, 0.0, 200.0, 100.0, 1.0);
         let contact2 = make_contact(0, 1, 20.0, 100.0, 50.0, 1.0);
         let contact3 = make_contact(0, 1, 10.0, 300.0, 100.0, 1.0);
@@ -409,7 +502,55 @@ mod tests {
         contact2.borrow_mut().suppressed = true;
         contact3.borrow_mut().suppressed = true;
 
-        let result = start_test(0, &source, &bundle, &[contact1, contact2, contact3], &tx, &rx);
-        assert!(result.is_none(), "TEST FAILED: Expected None when all contacts are supressed with contact_suppression feature.");
+        let result = start_test(
+            0,
+            &source,
+            &bundle,
+            &[contact1, contact2, contact3],
+            &tx,
+            &rx,
+        );
+        assert!(
+            result.is_none(),
+            "TEST FAILED: Expected None when all contacts are supressed with contact_suppression feature."
+        );
+    }
+
+    #[cfg(feature = "node_tx")]
+    #[test]
+    fn test_node_tx_refusing() {
+        let bundle = make_bundle(1.0);
+        let source = make_source(0.0, 0, &bundle);
+        let tx = make_node(0, MockNodeManager::refusing_tx());
+        let rx = make_node(1, MockNodeManager::accepting());
+        let contacts = vec![make_contact::<MockNodeManager>(
+            0, 1, 0.0, 2000.0, 100.0, 1.0,
+        )];
+
+        let result = start_test(0, &source, &bundle, &contacts, &tx, &rx);
+
+        assert!(
+            result.is_none(),
+            "TEST FAILED: Expected None when tx node refuses to emit."
+        );
+    }
+
+    #[cfg(feature = "node_rx")]
+    #[test]
+    fn test_node_rx_refusing() {
+        let bundle = make_bundle(1.0);
+        let source = make_source(0.0, 0, &bundle);
+        let tx = make_node(0, MockNodeManager::accepting());
+        let rx = make_node(1, MockNodeManager::refusing_rx());
+        let contacts = vec![make_contact::<MockNodeManager>(
+            0, 1, 0.0, 2000.0, 100.0, 1.0,
+        )];
+
+        let result = start_test(0, &source, &bundle, &contacts, &tx, &rx);
+
+        assert!(
+            result.is_none(),
+            "TEST FAILED: Expected None when rx node refuses to receive."
+        );
     }
 }
