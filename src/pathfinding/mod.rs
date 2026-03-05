@@ -348,10 +348,10 @@ mod tests {
     fn test_empty_contacts() {
         let bundle: Bundle = make_bundle(1.0);
         let source: Rc<RefCell<RouteStage<NoManagement, PSegmentationManager>>> = make_source(0.0, 0, &bundle);
-        let tx_node: Rc<RefCell<Node<NoManagement>>> = make_node(0);
-        let rx_node: Rc<RefCell<Node<NoManagement>>> = make_node(1);
+        let tx: Rc<RefCell<Node<NoManagement>>> = make_node(0);
+        let rx: Rc<RefCell<Node<NoManagement>>> = make_node(1);
 
-        let result: Option<RouteStage<NoManagement, PSegmentationManager>> = start_test(0, &source, &bundle, &[], &tx_node, &rx_node);
+        let result: Option<RouteStage<NoManagement, PSegmentationManager>> = start_test(0, &source, &bundle, &[], &tx, &rx);
 
         assert!(result.is_none(), "TEST FAILED: Expected None when contacts list is empty.");
     }
@@ -393,5 +393,23 @@ mod tests {
         let result = start_test(0, &source, &bundle, &contacts, &tx, &rx);
 
         assert!(result.is_some(), "TEST FAILED: Expected Some when the contact is valid and the bundle size is within contact capacity.");
+    }
+
+    #[cfg(feature = "contact_suppression")]
+    #[test]
+    fn test_all_contacts_supressed(){
+        let bundle = make_bundle(30.0);
+        let source = make_source(0.0, 0, &bundle);
+        let tx = make_node(0);
+        let rx = make_node(1);
+        let contact1 = make_contact(0, 1, 0.0, 200.0, 100.0, 1.0);
+        let contact2 = make_contact(0, 1, 20.0, 100.0, 50.0, 1.0);
+        let contact3 = make_contact(0, 1, 10.0, 300.0, 100.0, 1.0);
+        contact1.borrow_mut().suppressed = true;
+        contact2.borrow_mut().suppressed = true;
+        contact3.borrow_mut().suppressed = true;
+
+        let result = start_test(0, &source, &bundle, &[contact1, contact2, contact3], &tx, &rx);
+        assert!(result.is_none(), "TEST FAILED: Expected None when all contacts are supressed with contact_suppression feature.");
     }
 }
