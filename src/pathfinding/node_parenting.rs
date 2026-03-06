@@ -63,12 +63,11 @@ macro_rules! define_node_graph {
             /// * `current_time` - The current time used for evaluating routes.
             /// * `source` - The `NodeID` of the source node from which to begin pathfinding.
             /// * `bundle` - The `Bundle` associated with the pathfinding operation.
-            /// * `excluded_nodes_sorted` - A sorted list of `NodeID`s to be excluded from the pathfinding.
+            /// * `excluded_nodes` - A list of `NodeID`s to be excluded from the pathfinding.
             ///
             /// # Returns
             ///
-            /// * `Result<PathFindingOutput<NM, CM>, ASABRError>` - The resulting pathfinding output, including the routes found,
-            /// or an error if the operation fails.
+            /// * `PathfindingOutput<CM, D>` - The resulting pathfinding output, including the routes found.
             fn get_next(
                 &mut self,
                 current_time: Date,
@@ -180,3 +179,578 @@ macro_rules! define_node_graph {
 define_node_graph!(NodeParentingTreeExcl, true, true);
 define_node_graph!(NodeParentingPath, false, false);
 define_node_graph!(NodeParentingPathExcl, false, true);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bundle::Bundle;
+    use crate::contact::Contact;
+    use crate::contact::ContactInfo;
+    use crate::contact_manager::segmentation::Segment;
+    use crate::contact_manager::segmentation::pseg::PSegmentationManager;
+    use crate::distance::hop::Hop;
+    use crate::distance::sabr::SABR;
+    use crate::multigraph::Multigraph;
+    use crate::node::Node;
+    use crate::node::NodeInfo;
+    use crate::node_manager::none::NoManagement;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    fn unit_graph_test() -> Rc<RefCell<Multigraph<NoManagement, PSegmentationManager>>> {
+        let c1_rates = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 100.0,
+        }];
+        let c2_rates = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 100.0,
+        }];
+
+        let delay_segments_c1 = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 1.0,
+        }];
+        let delay_segments_c2 = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 1.0,
+        }];
+
+        let node_a = Node::try_new(
+            NodeInfo {
+                id: 0,
+                name: "A".into(),
+                excluded: false,
+            },
+            NoManagement {},
+        )
+        .unwrap();
+
+        let node_b = Node::try_new(
+            NodeInfo {
+                id: 1,
+                name: "B".into(),
+                excluded: false,
+            },
+            NoManagement {},
+        )
+        .unwrap();
+
+        let node_c = Node::try_new(
+            NodeInfo {
+                id: 2,
+                name: "C".into(),
+                excluded: false,
+            },
+            NoManagement {},
+        )
+        .unwrap();
+
+        let nodes = vec![node_a, node_b, node_c];
+
+        let c1 = Contact::try_new(
+            ContactInfo::new(0, 1, 0.0, 2000.0),
+            PSegmentationManager::new(c1_rates, delay_segments_c1),
+        )
+        .expect("C1 failed");
+
+        let c2 = Contact::try_new(
+            ContactInfo::new(1, 2, 0.0, 2000.0),
+            PSegmentationManager::new(c2_rates, delay_segments_c2),
+        )
+        .expect("C2 failed");
+
+        let contacts = vec![c1, c2];
+
+        Rc::new(RefCell::new(Multigraph::new(nodes, contacts)))
+    }
+
+    fn four_contact_graph_test() -> Rc<RefCell<Multigraph<NoManagement, PSegmentationManager>>> {
+        let c1_rates = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 100.0,
+        }];
+        let c2_rates = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 100.0,
+        }];
+        let c3_rates = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 100.0,
+        }];
+        let c4_rates = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 100.0,
+        }];
+
+        let delay_c1 = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 0.01,
+        }];
+        let delay_c2 = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 1.0,
+        }];
+        let delay_c3 = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 0.1,
+        }];
+        let delay_c4 = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 0.01,
+        }];
+
+        let node_a = Node::try_new(
+            NodeInfo {
+                id: 0,
+                name: "A".into(),
+                excluded: false,
+            },
+            NoManagement {},
+        )
+        .unwrap();
+        let node_b = Node::try_new(
+            NodeInfo {
+                id: 1,
+                name: "B".into(),
+                excluded: false,
+            },
+            NoManagement {},
+        )
+        .unwrap();
+        let node_c = Node::try_new(
+            NodeInfo {
+                id: 2,
+                name: "C".into(),
+                excluded: false,
+            },
+            NoManagement {},
+        )
+        .unwrap();
+        let node_d = Node::try_new(
+            NodeInfo {
+                id: 3,
+                name: "D".into(),
+                excluded: false,
+            },
+            NoManagement {},
+        )
+        .unwrap();
+
+        let c1 = Contact::try_new(
+            ContactInfo::new(0, 1, 0.0, 2000.0),
+            PSegmentationManager::new(c1_rates, delay_c1),
+        )
+        .expect("C1 failed");
+        let c2 = Contact::try_new(
+            ContactInfo::new(1, 2, 0.0, 2000.0),
+            PSegmentationManager::new(c2_rates, delay_c2),
+        )
+        .expect("C2 failed");
+        let c3 = Contact::try_new(
+            ContactInfo::new(0, 3, 0.0, 2000.0),
+            PSegmentationManager::new(c3_rates, delay_c3),
+        )
+        .expect("C3 failed");
+        let c4 = Contact::try_new(
+            ContactInfo::new(3, 2, 0.0, 2000.0),
+            PSegmentationManager::new(c4_rates, delay_c4),
+        )
+        .expect("C4 failed");
+
+        Rc::new(RefCell::new(Multigraph::new(
+            vec![node_a, node_b, node_c, node_d],
+            vec![c1, c2, c3, c4],
+        )))
+    }
+
+    fn five_contact_graph_test() -> Rc<RefCell<Multigraph<NoManagement, PSegmentationManager>>> {
+        let c1_rates = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 100.0,
+        }];
+        let c2_rates = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 100.0,
+        }];
+        let c3_rates = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 100.0,
+        }];
+        let c4_rates = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 100.0,
+        }];
+        let c5_rates = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 100.0,
+        }];
+
+        let delay_c1 = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 0.01,
+        }];
+        let delay_c2 = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 1.0,
+        }];
+        let delay_c3 = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 0.1,
+        }];
+        let delay_c4 = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 0.01,
+        }];
+        let delay_c5 = vec![Segment {
+            start: 0.0,
+            end: 2000.0,
+            val: 10.0,
+        }];
+
+        let node_a = Node::try_new(
+            NodeInfo {
+                id: 0,
+                name: "A".into(),
+                excluded: false,
+            },
+            NoManagement {},
+        )
+        .unwrap();
+        let node_b = Node::try_new(
+            NodeInfo {
+                id: 1,
+                name: "B".into(),
+                excluded: false,
+            },
+            NoManagement {},
+        )
+        .unwrap();
+        let node_c = Node::try_new(
+            NodeInfo {
+                id: 2,
+                name: "C".into(),
+                excluded: false,
+            },
+            NoManagement {},
+        )
+        .unwrap();
+        let node_d = Node::try_new(
+            NodeInfo {
+                id: 3,
+                name: "D".into(),
+                excluded: false,
+            },
+            NoManagement {},
+        )
+        .unwrap();
+
+        let c1 = Contact::try_new(
+            ContactInfo::new(0, 1, 0.0, 2000.0),
+            PSegmentationManager::new(c1_rates, delay_c1),
+        )
+        .expect("C1 failed");
+        let c2 = Contact::try_new(
+            ContactInfo::new(1, 2, 0.0, 2000.0),
+            PSegmentationManager::new(c2_rates, delay_c2),
+        )
+        .expect("C2 failed");
+        let c3 = Contact::try_new(
+            ContactInfo::new(0, 3, 0.0, 2000.0),
+            PSegmentationManager::new(c3_rates, delay_c3),
+        )
+        .expect("C3 failed");
+        let c4 = Contact::try_new(
+            ContactInfo::new(3, 2, 0.0, 2000.0),
+            PSegmentationManager::new(c4_rates, delay_c4),
+        )
+        .expect("C4 failed");
+        let c5 = Contact::try_new(
+            ContactInfo::new(0, 2, 0.0, 2000.0),
+            PSegmentationManager::new(c5_rates, delay_c5),
+        )
+        .expect("C5 failed");
+
+        Rc::new(RefCell::new(Multigraph::new(
+            vec![node_a, node_b, node_c, node_d],
+            vec![c1, c2, c3, c4, c5],
+        )))
+    }
+
+    #[test]
+    fn test_a_to_c_tree() {
+        let mg = unit_graph_test();
+
+        let mut algo_hop =
+            NodeParentingTreeExcl::<NoManagement, PSegmentationManager, Hop>::new(mg.clone());
+        let mut algo_sabr =
+            NodeParentingTreeExcl::<NoManagement, PSegmentationManager, SABR>::new(mg.clone());
+
+        let bundle = Bundle {
+            source: 0,
+            destinations: vec![2],
+            priority: 1,
+            size: 1.0,
+            expiration: 2000.0,
+        };
+
+        // With Hop
+
+        let res = algo_hop
+            .get_next(0.0, 0, &bundle, &[][..])
+            .expect("Hop : Routing Failed !");
+        let route_option = &res.by_destination[2];
+        let route = route_option
+            .as_ref()
+            .expect("Hop : No route found to node 2");
+        let r = route.borrow();
+        assert_eq!(r.at_time, 2.02, "Hop : Arrival time should be 2.02");
+        assert_eq!(r.hop_count, 2, "Hop : Should be 2 Hop");
+        /*
+        Start A : 0.0
+        Going B = 0.0 + 1.0/100 = 0.01
+        Arrival B = 0.01 + 1.0 = 1.01
+        Going C = 1.01 + 1.0/100.0 = 1.02
+        End C = 1.02 + 1.0 = 2.02 */
+
+        // With SABR
+
+        let res_sabr = algo_sabr
+            .get_next(0.0, 0, &bundle, &[][..])
+            .expect("SABR : Routing Failed !");
+        let route_option_sabr = &res_sabr.by_destination[2];
+        let route_sabr = route_option_sabr
+            .as_ref()
+            .expect("SABR : No route found to node 2");
+        let r_sabr = route_sabr.borrow();
+        assert_eq!(r_sabr.at_time, 2.02, "SABR : Arrival time should be 2.02");
+        assert_eq!(r_sabr.hop_count, 2, "SABR : Should be 2 Hop");
+    }
+
+    #[test]
+    fn test_a_to_c_tree_excluded() {
+        let mg = unit_graph_test();
+
+        let mut algo_hop =
+            NodeParentingTreeExcl::<NoManagement, PSegmentationManager, Hop>::new(mg.clone());
+        let mut algo_sabr =
+            NodeParentingTreeExcl::<NoManagement, PSegmentationManager, SABR>::new(mg.clone());
+
+        let bundle = Bundle {
+            source: 0,
+            destinations: vec![2],
+            priority: 1,
+            size: 1.0,
+            expiration: 2000.0,
+        };
+
+        let excluded = vec![1];
+
+        // Whith Hop
+
+        let res = algo_hop
+            .get_next(0.0, 0, &bundle, &excluded[..])
+            .expect("Hop : Routing Failed !");
+        assert!(
+            res.by_destination[1].is_none(),
+            "Hop : B should be excluded"
+        );
+        assert!(
+            res.by_destination[2].is_none(),
+            "Hop : C should be no accessible without C"
+        );
+
+        // With SABR
+
+        let res_sabr = algo_sabr
+            .get_next(0.0, 0, &bundle, &excluded[..])
+            .expect("SABR : Routing Failed !");
+        assert!(
+            res_sabr.by_destination[1].is_none(),
+            "SABR : B should be excluded"
+        );
+        assert!(
+            res_sabr.by_destination[2].is_none(),
+            "SABR : C should be no accessible without C"
+        );
+    }
+
+    #[test]
+    fn test_a_to_b_path() {
+        let mg = unit_graph_test();
+
+        let mut algo_hop =
+            NodeParentingPath::<NoManagement, PSegmentationManager, Hop>::new(mg.clone());
+        let mut algo_sabr =
+            NodeParentingPath::<NoManagement, PSegmentationManager, SABR>::new(mg.clone());
+
+        let bundle = Bundle {
+            source: 0,
+            destinations: vec![1],
+            priority: 1,
+            size: 1.0,
+            expiration: 2000.0,
+        };
+
+        // With Hop
+        let res_hop = algo_hop
+            .get_next(0.0, 0, &bundle, &[][..])
+            .expect("Hop : Routing Failed !");
+        let route_rc = res_hop.by_destination[1]
+            .as_ref()
+            .expect("Hop : No route found to node 2");
+        let r = route_rc.borrow();
+        assert_eq!(r.at_time, 1.01, "Hop : Arrival time should be 1.01");
+        assert_eq!(r.hop_count, 1, "Hop : Should be 1 Hop");
+        assert!(
+            res_hop.by_destination[2].is_none(),
+            "Hop : C should be no accessible without C"
+        );
+
+        // With Sabr
+        let res_sabr = algo_sabr
+            .get_next(0.0, 0, &bundle, &[][..])
+            .expect("SABR : Routing Failed !");
+        let route_sabr = res_sabr.by_destination[1]
+            .as_ref()
+            .expect("SABR : No route found to node 1");
+        let r_sabr = route_sabr.borrow();
+        assert_eq!(r_sabr.at_time, 1.01, "SABR : Arrival time should be 1.01");
+        assert_eq!(r_sabr.hop_count, 1, "SABR : Should be 1 Hop");
+        assert!(
+            res_sabr.by_destination[2].is_none(),
+            "SABR : C should be no accessible without B"
+        );
+    }
+
+    #[test]
+    fn test_a_to_c_path_excl() {
+        let mg = unit_graph_test();
+
+        let mut algo_hop =
+            NodeParentingPathExcl::<NoManagement, PSegmentationManager, Hop>::new(mg.clone());
+        let mut algo_sabr =
+            NodeParentingPathExcl::<NoManagement, PSegmentationManager, SABR>::new(mg.clone());
+
+        let bundle = Bundle {
+            source: 0,
+            destinations: vec![2],
+            priority: 1,
+            size: 1.0,
+            expiration: 2000.0,
+        };
+
+        let excluded = vec![1];
+
+        let res_hop = algo_hop
+            .get_next(0.0, 0, &bundle, &excluded[..])
+            .expect("Hop : Routing Failed !");
+        assert!(
+            res_hop.by_destination[2].is_none(),
+            "Hop : C should be no accessible without B"
+        );
+
+        let res_sabr = algo_sabr
+            .get_next(0.0, 0, &bundle, &excluded[..])
+            .expect("ASBR : Routing Failed !");
+        assert!(
+            res_sabr.by_destination[2].is_none(),
+            "SABR : C should be no accessible without B"
+        );
+    }
+
+    #[test]
+    fn test_two_paths_to_c() {
+        let mg = four_contact_graph_test();
+
+        let mut algo_hop =
+            NodeParentingTreeExcl::<NoManagement, PSegmentationManager, Hop>::new(mg.clone());
+        let mut algo_sabr =
+            NodeParentingTreeExcl::<NoManagement, PSegmentationManager, SABR>::new(mg.clone());
+
+        let bundle = Bundle {
+            source: 0,
+            destinations: vec![2],
+            priority: 1,
+            size: 1.0,
+            expiration: 2000.0,
+        };
+
+        let res_hop = algo_hop
+            .get_next(0.0, 0, &bundle, &[][..])
+            .expect("Hop : Routing Failed !");
+        let route_hop = res_hop.by_destination[2]
+            .as_ref()
+            .expect("Hop : No route found to node C");
+        let r_hop = route_hop.borrow();
+        assert_eq!(r_hop.hop_count, 2, "Hop : Should be 2 Hop");
+
+        let res_sabr = algo_sabr
+            .get_next(0.0, 0, &bundle, &[][..])
+            .expect("SABR : Routing Failed !");
+        let route_sabr = res_sabr.by_destination[2]
+            .as_ref()
+            .expect("SABR : No route found to node C");
+        let r_sabr = route_sabr.borrow();
+        assert_eq!(r_sabr.hop_count, 2, "SABR : Should be 2 Hop");
+    }
+
+    #[test]
+    fn test_two_paths_to_c_1_hop() {
+        let mg = five_contact_graph_test();
+
+        let mut algo_hop =
+            NodeParentingTreeExcl::<NoManagement, PSegmentationManager, Hop>::new(mg.clone());
+        let mut algo_sabr =
+            NodeParentingTreeExcl::<NoManagement, PSegmentationManager, SABR>::new(mg.clone());
+
+        let bundle = Bundle {
+            source: 0,
+            destinations: vec![2],
+            priority: 1,
+            size: 1.0,
+            expiration: 2000.0,
+        };
+
+        let res_hop = algo_hop
+            .get_next(0.0, 0, &bundle, &[][..])
+            .expect("Routing Failed !");
+        let route_hop = res_hop.by_destination[2]
+            .as_ref()
+            .expect("Hop : No route found to node 2");
+        let r_hop = route_hop.borrow();
+        assert_eq!(r_hop.hop_count, 1, "Hop : Should be 1 Hop");
+        assert_eq!(r_hop.at_time, 10.01, "Hop : Arrival time should be 5.01");
+
+        let res_sabr = algo_sabr
+            .get_next(0.0, 0, &bundle, &[][..])
+            .expect("Routing Failed !");
+        let route_sabr = res_sabr.by_destination[2]
+            .as_ref()
+            .expect("SABR : No route found to node 2");
+        let r_sabr = route_sabr.borrow();
+        assert_eq!(r_sabr.hop_count, 2, "SABR : Should be 2 Hop");
+        assert_eq!(r_sabr.at_time, 0.13, "SABR : Arrival time should be 1.03");
+    }
+}
