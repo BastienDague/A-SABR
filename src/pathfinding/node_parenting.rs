@@ -63,7 +63,7 @@ macro_rules! define_node_graph {
             /// * `current_time` - The current time used for evaluating routes.
             /// * `source` - The `NodeID` of the source node from which to begin pathfinding.
             /// * `bundle` - The `Bundle` associated with the pathfinding operation.
-            /// * `excluded_nodes` - A list of `NodeID`s to be excluded from the pathfinding.
+            /// * `excluded_nodes_sorted` - A sorted list of `NodeID`s to be excluded from the pathfinding.
             ///
             /// # Returns
             ///
