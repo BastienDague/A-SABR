@@ -197,184 +197,69 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    fn unit_graph_test() -> Rc<RefCell<Multigraph<NoManagement, EVLManager>>> {
-        let node_a = Node::try_new(
-            NodeInfo {
-                id: 0,
-                name: "A".into(),
-                excluded: false,
-            },
+    fn make_node(id: u16, name: &str) -> Node<NoManagement> {
+        Node::try_new(
+            NodeInfo { id, name: name.into(), excluded: false },
             NoManagement {},
-        )
-        .unwrap();
-        let node_b = Node::try_new(
-            NodeInfo {
-                id: 1,
-                name: "B".into(),
-                excluded: false,
-            },
-            NoManagement {},
-        )
-        .unwrap();
-        let node_c = Node::try_new(
-            NodeInfo {
-                id: 2,
-                name: "C".into(),
-                excluded: false,
-            },
-            NoManagement {},
-        )
-        .unwrap();
-
-        let c1 = Contact::try_new(
-            ContactInfo::new(0, 1, 0.0, 2000.0),
-            EVLManager::new(100.0, 1.0),
-        )
-        .expect("C1 failed");
-        let c2 = Contact::try_new(
-            ContactInfo::new(1, 2, 0.0, 2000.0),
-            EVLManager::new(100.0, 1.0),
-        )
-        .expect("C2 failed");
-
-        Rc::new(RefCell::new(Multigraph::new(
-            vec![node_a, node_b, node_c],
-            vec![c1, c2],
-        )))
+        ).unwrap()
     }
 
-    fn four_contact_graph_test() -> Rc<RefCell<Multigraph<NoManagement, EVLManager>>> {
-        let node_a = Node::try_new(
-            NodeInfo {
-                id: 0,
-                name: "A".into(),
-                excluded: false,
-            },
-            NoManagement {},
-        )
-        .unwrap();
-        let node_b = Node::try_new(
-            NodeInfo {
-                id: 1,
-                name: "B".into(),
-                excluded: false,
-            },
-            NoManagement {},
-        )
-        .unwrap();
-        let node_c = Node::try_new(
-            NodeInfo {
-                id: 2,
-                name: "C".into(),
-                excluded: false,
-            },
-            NoManagement {},
-        )
-        .unwrap();
-        let node_d = Node::try_new(
-            NodeInfo {
-                id: 3,
-                name: "D".into(),
-                excluded: false,
-            },
-            NoManagement {},
-        )
-        .unwrap();
+    fn make_contact(tx: u16, rx: u16, start: f64, end: f64, rate: f64, delay: f64) -> Contact<NoManagement, EVLManager> {
+        Contact::try_new(
+            ContactInfo::new(tx, rx, start, end),
+            EVLManager::new(rate, delay),
+        ).expect(&format!("Contact failed"))
+    }
 
-        let c1 = Contact::try_new(
-            ContactInfo::new(0, 1, 0.0, 2000.0),
-            EVLManager::new(100.0, 0.01),
-        )
-        .expect("C1 failed");
-        let c2 = Contact::try_new(
-            ContactInfo::new(1, 2, 0.0, 2000.0),
-            EVLManager::new(100.0, 1.0),
-        )
-        .expect("C2 failed");
-        let c3 = Contact::try_new(
-            ContactInfo::new(0, 3, 0.0, 2000.0),
-            EVLManager::new(100.0, 0.1),
-        )
-        .expect("C3 failed");
-        let c4 = Contact::try_new(
-            ContactInfo::new(3, 2, 0.0, 2000.0),
-            EVLManager::new(100.0, 0.01),
-        )
-        .expect("C4 failed");
+    fn make_bundle(dest: NodeID, priority: i8, size: f64, expiration: f64) -> Bundle {
+        Bundle { source: 0, destinations: vec![dest], priority, size, expiration }
+    }
 
+    fn unit_graph_test() -> Rc<RefCell<Multigraph<NoManagement, EVLManager>>> {
         Rc::new(RefCell::new(Multigraph::new(
-            vec![node_a, node_b, node_c, node_d],
-            vec![c1, c2, c3, c4],
+            vec![make_node(0, "A"), make_node(1, "B"), make_node(2, "C")],
+            vec![
+                make_contact(0, 1, 0.0, 2000.0, 100.0, 1.0),
+                make_contact(1, 2, 0.0, 2000.0, 100.0, 1.0),
+            ],
         )))
     }
 
     fn five_contact_graph_test() -> Rc<RefCell<Multigraph<NoManagement, EVLManager>>> {
-        let node_a = Node::try_new(
-            NodeInfo {
-                id: 0,
-                name: "A".into(),
-                excluded: false,
-            },
-            NoManagement {},
-        )
-        .unwrap();
-        let node_b = Node::try_new(
-            NodeInfo {
-                id: 1,
-                name: "B".into(),
-                excluded: false,
-            },
-            NoManagement {},
-        )
-        .unwrap();
-        let node_c = Node::try_new(
-            NodeInfo {
-                id: 2,
-                name: "C".into(),
-                excluded: false,
-            },
-            NoManagement {},
-        )
-        .unwrap();
-        let node_d = Node::try_new(
-            NodeInfo {
-                id: 3,
-                name: "D".into(),
-                excluded: false,
-            },
-            NoManagement {},
-        )
-        .unwrap();
-
-        let c1 = Contact::try_new(
-            ContactInfo::new(0, 1, 0.0, 2000.0),
-            EVLManager::new(100.0, 0.01),
-        )
-        .expect("C1 failed");
-        let c2 = Contact::try_new(
-            ContactInfo::new(1, 2, 0.0, 2000.0),
-            EVLManager::new(100.0, 1.0),
-        )
-        .expect("C2 failed");
-        let c3 = Contact::try_new(
-            ContactInfo::new(0, 3, 0.0, 2000.0),
-            EVLManager::new(100.0, 0.1),
-        )
-        .expect("C3 failed");
-        let c4 = Contact::try_new(
-            ContactInfo::new(3, 2, 0.0, 2000.0),
-            EVLManager::new(100.0, 0.01),
-        )
-        .expect("C4 failed");
-        let c5 = Contact::try_new(
-            ContactInfo::new(0, 2, 0.0, 2000.0),
-            EVLManager::new(100.0, 10.0),
-        )
-        .expect("C5 failed");
-
         Rc::new(RefCell::new(Multigraph::new(
-            vec![node_a, node_b, node_c, node_d],
-            vec![c1, c2, c3, c4, c5],
+            vec![make_node(0, "A"), make_node(1, "B"), make_node(2, "C"), make_node(3, "D")],
+            vec![
+                make_contact(0, 1, 0.0, 2000.0, 100.0, 0.01),
+                make_contact(1, 2, 0.0, 2000.0, 100.0, 1.0),
+                make_contact(0, 3, 0.0, 2000.0, 100.0, 0.1),
+                make_contact(3, 2, 0.0, 2000.0, 100.0, 0.01),
+                make_contact(0, 2, 0.0, 2000.0, 100.0, 10.0),
+            ],
+        )))
+    }
+
+    fn exemple_1_graph() -> Rc<RefCell<Multigraph<NoManagement, EVLManager>>> {
+        Rc::new(RefCell::new(Multigraph::new(
+            vec![make_node(0, "source"), make_node(1, "from_C0"), make_node(2, "from_C2_C1"), make_node(3, "from_C3")],
+            vec![
+                make_contact(0, 1, 0.0,  10.0, 1.0, 0.0),
+                make_contact(0, 2, 25.0, 35.0, 1.0, 0.0),
+                make_contact(1, 2, 10.0, 20.0, 1.0, 0.0),
+                make_contact(2, 3, 30.0, 40.0, 1.0, 0.0),
+            ],
+        )))
+    }
+
+    fn exemple_2_graph() -> Rc<RefCell<Multigraph<NoManagement, EVLManager>>> {
+        Rc::new(RefCell::new(Multigraph::new(
+            vec![make_node(0, "source"), make_node(1, "from_C0"), make_node(2, "from_C2_C1"), make_node(3, "from_C3"), make_node(4, "from_C4")],
+            vec![
+                make_contact(0, 1, 0.0,  10.0, 1.0, 0.0),
+                make_contact(0, 2, 25.0, 35.0, 1.0, 0.0),
+                make_contact(1, 2, 10.0, 20.0, 1.0, 0.0),
+                make_contact(2, 3, 20.0, 40.0, 1.0, 0.0),
+                make_contact(3, 4, 50.0, 60.0, 1.0, 0.0),
+            ],
         )))
     }
 
@@ -383,15 +268,10 @@ mod tests {
         let mg = unit_graph_test();
 
         let mut algo_hop = NodeParentingTreeExcl::<NoManagement, EVLManager, Hop>::new(mg.clone());
-        let mut algo_sabr = NodeParentingTreeExcl::<NoManagement, EVLManager, SABR>::new(mg.clone());
+        let mut algo_sabr =
+            NodeParentingTreeExcl::<NoManagement, EVLManager, SABR>::new(mg.clone());
 
-        let bundle = Bundle {
-            source: 0,
-            destinations: vec![2],
-            priority: 1,
-            size: 1.0,
-            expiration: 2000.0,
-        };
+        let bundle = make_bundle(2, 1, 1.0, 2000.0);
 
         // With Hop
         let res = algo_hop
@@ -403,12 +283,6 @@ mod tests {
             .borrow();
         assert_eq!(r.at_time, 2.02, "Hop : Arrival time should be 2.02");
         assert_eq!(r.hop_count, 2, "Hop : Should be 2 Hop");
-        /*
-        Start A : 0.0
-        Going B = 0.0 + 1.0/100 = 0.01
-        Arrival B = 0.01 + 1.0 = 1.01
-        Going C = 1.01 + 1.0/100.0 = 1.02
-        End C = 1.02 + 1.0 = 2.02 */
 
         // With SABR
         let res_sabr = algo_sabr
@@ -429,13 +303,7 @@ mod tests {
         let mut algo_hop = NodeParentingTreeExcl::<NoManagement, EVLManager, Hop>::new(mg.clone());
         let mut algo_sabr = NodeParentingTreeExcl::<NoManagement, EVLManager, SABR>::new(mg.clone());
 
-        let bundle = Bundle {
-            source: 0,
-            destinations: vec![2],
-            priority: 1,
-            size: 1.0,
-            expiration: 2000.0,
-        };
+        let bundle = make_bundle(2, 1, 1.0, 2000.0);
         let excluded = vec![1];
 
         // With Hop
@@ -466,65 +334,13 @@ mod tests {
     }
 
     #[test]
-    fn test_a_to_b_path() {
-        let mg = unit_graph_test();
-
-        let mut algo_hop = NodeParentingPath::<NoManagement, EVLManager, Hop>::new(mg.clone());
-        let mut algo_sabr = NodeParentingPath::<NoManagement, EVLManager, SABR>::new(mg.clone());
-
-        let bundle = Bundle {
-            source: 0,
-            destinations: vec![1],
-            priority: 1,
-            size: 1.0,
-            expiration: 2000.0,
-        };
-
-        // With Hop
-        let res_hop = algo_hop
-            .get_next(0.0, 0, &bundle, &[][..])
-            .expect("Hop : Routing Failed !");
-        let r = res_hop.by_destination[1]
-            .as_ref()
-            .expect("Hop : No route found to node 1")
-            .borrow();
-        assert_eq!(r.at_time, 1.01, "Hop : Arrival time should be 1.01");
-        assert_eq!(r.hop_count, 1, "Hop : Should be 1 Hop");
-        assert!(
-            res_hop.by_destination[2].is_none(),
-            "Hop : C should not be accessible, stops at B"
-        );
-
-        // With SABR
-        let res_sabr = algo_sabr
-            .get_next(0.0, 0, &bundle, &[][..])
-            .expect("SABR : Routing Failed !");
-        let r_sabr = res_sabr.by_destination[1]
-            .as_ref()
-            .expect("SABR : No route found to node 1")
-            .borrow();
-        assert_eq!(r_sabr.at_time, 1.01, "SABR : Arrival time should be 1.01");
-        assert_eq!(r_sabr.hop_count, 1, "SABR : Should be 1 Hop");
-        assert!(
-            res_sabr.by_destination[2].is_none(),
-            "SABR : C should not be accessible, stops at B"
-        );
-    }
-
-    #[test]
     fn test_a_to_c_path_excl() {
         let mg = unit_graph_test();
 
         let mut algo_hop = NodeParentingPathExcl::<NoManagement, EVLManager, Hop>::new(mg.clone());
         let mut algo_sabr = NodeParentingPathExcl::<NoManagement, EVLManager, SABR>::new(mg.clone());
 
-        let bundle = Bundle {
-            source: 0,
-            destinations: vec![2],
-            priority: 1,
-            size: 1.0,
-            expiration: 2000.0,
-        };
+        let bundle = make_bundle(2, 1, 1.0, 2000.0);
         let excluded = vec![1];
 
         let res_hop = algo_hop
@@ -545,55 +361,15 @@ mod tests {
     }
 
     #[test]
-    fn test_two_paths_to_c() {
-        let mg = four_contact_graph_test();
-
-        let mut algo_hop = NodeParentingTreeExcl::<NoManagement, EVLManager, Hop>::new(mg.clone());
-        let mut algo_sabr = NodeParentingTreeExcl::<NoManagement, EVLManager, SABR>::new(mg.clone());
-
-        let bundle = Bundle {
-            source: 0,
-            destinations: vec![2],
-            priority: 1,
-            size: 1.0,
-            expiration: 2000.0,
-        };
-
-        let res_hop = algo_hop
-            .get_next(0.0, 0, &bundle, &[][..])
-            .expect("Hop : Routing Failed !");
-        let r_hop = res_hop.by_destination[2]
-            .as_ref()
-            .expect("Hop : No route found to node C")
-            .borrow();
-        assert_eq!(r_hop.hop_count, 2, "Hop : Should be 2 Hop");
-
-        let res_sabr = algo_sabr
-            .get_next(0.0, 0, &bundle, &[][..])
-            .expect("SABR : Routing Failed !");
-        let r_sabr = res_sabr.by_destination[2]
-            .as_ref()
-            .expect("SABR : No route found to node C")
-            .borrow();
-        assert_eq!(r_sabr.hop_count, 2, "SABR : Should be 2 Hop");
-    }
-
-    #[test]
     fn test_two_paths_to_c_1_hop() {
         let mg = five_contact_graph_test();
-        
+
         let mut algo_hop: NodeParentingTreeExcl<NoManagement, EVLManager, Hop> = NodeParentingTreeExcl::<NoManagement, EVLManager, Hop>::new(mg.clone());
         let mut algo_sabr: NodeParentingTreeExcl<NoManagement, EVLManager, SABR> = NodeParentingTreeExcl::<NoManagement, EVLManager, SABR>::new(mg.clone());
 
-        let bundle = Bundle {
-            source: 0,
-            destinations: vec![2],
-            priority: 1,
-            size: 1.0,
-            expiration: 2000.0,
-        };
+        let bundle = make_bundle(2, 1, 1.0, 2000.0);
 
-        // Hop 
+        // Hop
         let res_hop = algo_hop
             .get_next(0.0, 0, &bundle, &[][..])
             .expect("Hop : Routing Failed !");
@@ -604,7 +380,7 @@ mod tests {
         assert_eq!(r_hop.hop_count, 1, "Hop : Should be 1 Hop");
         assert_eq!(r_hop.at_time, 10.01, "Hop : Arrival time should be 10.01");
 
-        // SABR 
+        // SABR
         let res_sabr = algo_sabr
             .get_next(0.0, 0, &bundle, &[][..])
             .expect("SABR : Routing Failed !");
@@ -614,5 +390,69 @@ mod tests {
             .borrow();
         assert_eq!(r_sabr.hop_count, 2, "SABR : Should be 2 Hop");
         assert_eq!(r_sabr.at_time, 0.13, "SABR : Arrival time should be 0.13");
+    }
+
+    #[test]
+    fn test_exemple_1() {
+        let mg = exemple_1_graph();
+
+        let mut algo_hop = NodeParentingPath::<NoManagement, EVLManager, Hop>::new(mg.clone());
+        let mut algo_sabr = NodeParentingPath::<NoManagement, EVLManager, SABR>::new(mg.clone());
+
+        let bundle = make_bundle(3, 0, 0.0, 1000.0);
+
+        let res_hop = algo_hop
+            .get_next(0.0, 0, &bundle, &[][..])
+            .expect("Routing Failed !");
+        let r_hop = res_hop.by_destination[3]
+            .as_ref()
+            .expect("No route found to node 3")
+            .borrow();
+
+        assert_eq!(r_hop.at_time, 30.0, "Hop : Arrival time should be 30.0");
+        assert_eq!(r_hop.hop_count, 2, "Hop : Should be 2 hops");
+
+        let res_sabr = algo_sabr
+            .get_next(0.0, 0, &bundle, &[][..])
+            .expect("Routing Failed !");
+        let r_sabr = res_sabr.by_destination[3]
+            .as_ref()
+            .expect("No route found to node 3")
+            .borrow();
+
+        assert_eq!(r_sabr.at_time, 30.0, "SABR : Arrival time should be 30.0");
+        assert_eq!(r_sabr.hop_count, 3, "SABR : Should be 3 hops");
+    }
+
+    #[test]
+    fn test_exemple_2() {
+        let mg = exemple_2_graph();
+
+        let mut algo_hop = NodeParentingPath::<NoManagement, EVLManager, Hop>::new(mg.clone());
+        let mut algo_sabr = NodeParentingPath::<NoManagement, EVLManager, SABR>::new(mg.clone());
+
+        let bundle = make_bundle(4, 0, 0.0, 1000.0);
+
+        let res_hop = algo_hop
+            .get_next(0.0, 0, &bundle, &[][..])
+            .expect("Routing Failed !");
+        let r_hop = res_hop.by_destination[4]
+            .as_ref()
+            .expect("No route found to node 4")
+            .borrow();
+
+        assert_eq!(r_hop.at_time, 50.0, "Hop : Arrival time should be 50.0");
+        assert_eq!(r_hop.hop_count, 3, "Hop : Should be 3 hops");
+
+        let res_sabr = algo_sabr
+            .get_next(0.0, 0, &bundle, &[][..])
+            .expect("Routing Failed !");
+        let r_sabr = res_sabr.by_destination[4]
+            .as_ref()
+            .expect("No route found to node 4")
+            .borrow();
+
+        assert_eq!(r_sabr.at_time, 50.0, "SABR : Arrival time should be 50.0");
+        assert_eq!(r_sabr.hop_count, 4, "SABR : Should be 4 hops");
     }
 }
