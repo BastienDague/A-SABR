@@ -364,8 +364,8 @@ mod tests {
     fn test_two_paths_to_c_1_hop() {
         let mg = five_contact_graph_test();
 
-        let mut algo_hop: NodeParentingTreeExcl<NoManagement, EVLManager, Hop> = NodeParentingTreeExcl::<NoManagement, EVLManager, Hop>::new(mg.clone());
-        let mut algo_sabr: NodeParentingTreeExcl<NoManagement, EVLManager, SABR> = NodeParentingTreeExcl::<NoManagement, EVLManager, SABR>::new(mg.clone());
+        let mut algo_hop= NodeParentingTreeExcl::<NoManagement, EVLManager, Hop>::new(mg.clone());
+        let mut algo_sabr= NodeParentingTreeExcl::<NoManagement, EVLManager, SABR>::new(mg.clone());
 
         let bundle = make_bundle(2, 1, 1.0, 2000.0);
 
