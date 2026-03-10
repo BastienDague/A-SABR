@@ -486,6 +486,42 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_first_contact_index_skips_valid_contact() {
+        let bundle = make_bundle(10.0);
+        let source = make_source(0.0, 0, &bundle);
+        let tx = make_node(0, NoManagement {});
+        let rx = make_node(1, NoManagement {});
+
+        // Contact 0 (index 0) : valid, arrival = 1.1, the best but it should be ignored
+        let contact_skipped = make_contact(0, 1, 0.0, 200.0, 100.0, 1.0);
+        // Contact 1 (index 1) : valid, arrival = 5.1, should be the one selected
+        let contact_used = make_contact(0, 1, 0.0, 200.0, 100.0, 5.0);
+
+        // first_contact_index = 1 -> we skip the first contact
+        let result = run_hop(
+            1,
+            &source,
+            &bundle,
+            &[contact_skipped, contact_used],
+            &tx,
+            &rx,
+        );
+
+        assert!(
+            result.is_some(),
+            "TEST FAILED: Expected Some from contact at index 1."
+        );
+
+        let route = result.unwrap();
+        
+        assert_eq!(
+            route.at_time, 5.1,
+            "TEST FAILED: Expected arrival 5.1 from contact at index 1, not 1.1 from skipped contact (got {}).",
+            route.at_time
+        );
+    }
+
     #[cfg(feature = "contact_suppression")]
     #[test]
     fn test_all_contacts_supressed() {
@@ -511,6 +547,40 @@ mod tests {
         assert!(
             result.is_none(),
             "TEST FAILED: Expected None when all contacts are supressed with contact_suppression feature."
+        );
+    }
+
+    #[cfg(feature = "contact_suppression")]
+    #[test]
+    fn test_partial_suppression_uses_valid_contact() {
+        let bundle = make_bundle(10.0);
+        let source = make_source(0.0, 0, &bundle);
+        let tx = make_node(0, NoManagement {});
+        let rx = make_node(1, NoManagement {});
+        let contact_suppressed = make_contact(0, 1, 0.0, 200.0, 100.0, 1.0);
+        let contact_valid = make_contact(0, 1, 0.0, 200.0, 100.0, 2.0);
+        contact_suppressed.borrow_mut().suppressed = true;
+
+        let result = run_hop(
+            0,
+            &source,
+            &bundle,
+            &[contact_suppressed, contact_valid],
+            &tx,
+            &rx,
+        );
+
+        assert!(
+            result.is_some(),
+            "TEST FAILED: Expected Some from non-suppressed contact."
+        );
+
+        let route = result.unwrap();
+
+        assert_eq!(
+            route.at_time, 2.1,
+            "TEST FAILED: Expected arrival 2.1 from non-suppressed contact (got {}).",
+            route.at_time
         );
     }
 
@@ -551,11 +621,6 @@ mod tests {
             "TEST FAILED: Expected None when rx node refuses to receive."
         );
     }
-
-    // make_contact(tx_id, rx_id, start, end, rate, delay);
-    // tx_start = max(contact.start, at_time)
-    // tx_end = tx_start + size / rate
-    // arrival = tx_end + delay
 
     #[cfg(feature = "node_proc")]
     #[test]
@@ -647,8 +712,9 @@ mod tests {
     #[test]
     fn test_best_contact_selected_2_hops() {
         let bundle = make_bundle(100.0);
-
         let source = make_source(0.0, 0, &bundle);
+        // We set the expiration on the source to test that min(contact.end - cumulative_delay, source.expiration) works
+        source.borrow_mut().expiration = 150.0;
         let tx0 = make_node(0, NoManagement {});
         let rx1 = make_node(1, NoManagement {});
 
@@ -676,8 +742,8 @@ mod tests {
             hop1.cumulative_delay
         );
         assert_eq!(
-            hop1.expiration, 200.0,
-            "Hop 1 FAILED: Expected expiration=200.0 (got {}).",
+            hop1.expiration, 150.0,
+            "Hop 1 FAILED: Expected expiration=150.0 (got {}).",
             hop1.expiration
         );
 
@@ -687,9 +753,9 @@ mod tests {
         let rx2 = make_node(2, NoManagement {});
 
         // Contact C : arrival = 3.5 -> the best one
-        let contact_c = make_contact(1, 2, 0.0, 200.0, 100.0, 0.5);
+        let contact_c = make_contact(1, 2, 0.0, 1000.0, 100.0, 0.5);
         // Contact D : arrival = 5.0
-        let contact_d = make_contact(1, 2, 0.0, 200.0, 100.0, 2.0);
+        let contact_d = make_contact(1, 2, 0.0, 1000.0, 100.0, 2.0);
 
         let hop2 = run_hop(0, &source2, &bundle, &[contact_c, contact_d], &tx1, &rx2)
             .expect("TEST FAILED: Hop 2 should succeed.");
@@ -710,8 +776,8 @@ mod tests {
             hop2.cumulative_delay
         );
         assert_eq!(
-            hop2.expiration, 199.0,
-            "Hop 2 FAILED: Expected expiration=199.0 from min(200.0-1.0, 200.0) (got {}).",
+            hop2.expiration, 150.0,
+            "Hop 2 FAILED: Expected expiration=150.0 limited by propagated source.expiration (got {}).",
             hop2.expiration
         );
         assert!(
