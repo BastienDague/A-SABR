@@ -261,8 +261,7 @@ mod tests {
     use crate::bundle::Bundle;
     use crate::contact::Contact;
     use crate::contact::ContactInfo;
-    use crate::contact_manager::segmentation::Segment;
-    use crate::contact_manager::segmentation::pseg::PSegmentationManager;
+    use crate::contact_manager::legacy::evl::EVLManager;
     use crate::node::Node;
     use crate::node::NodeInfo;
     use crate::node_manager::NodeManager;
@@ -301,6 +300,15 @@ mod tests {
                 tx_ok: true,
                 rx_ok: false,
                 process_output: 0.0,
+            }
+        }
+
+        #[cfg(feature = "node_proc")]
+        fn processing(process_output: Date) -> Self {
+            Self {
+                tx_ok: true,
+                rx_ok: true,
+                process_output,
             }
         }
     }
@@ -372,7 +380,7 @@ mod tests {
         at_time: Date,
         node_id: u16,
         _bundle: &Bundle,
-    ) -> SharedRouteStage<NM, PSegmentationManager> {
+    ) -> SharedRouteStage<NM, EVLManager> {
         Rc::new(RefCell::new(RouteStage::new(
             at_time,
             node_id,
@@ -389,35 +397,25 @@ mod tests {
         end: Date,
         rate: f64,
         delay: f64,
-    ) -> Rc<RefCell<Contact<NM, PSegmentationManager>>> {
-        let rates = vec![Segment {
-            start,
-            end,
-            val: rate,
-        }];
-        let delays = vec![Segment {
-            start,
-            end,
-            val: delay,
-        }];
+    ) -> Rc<RefCell<Contact<NM, EVLManager>>> {
         Rc::new(RefCell::new(
             Contact::try_new(
                 ContactInfo::new(tx_id, rx_id, start, end),
-                PSegmentationManager::new(rates, delays),
+                EVLManager::new(rate, delay),
             )
             .expect("Contact creation failed"),
         ))
     }
 
     #[track_caller]
-    fn start_test<NM: NodeManager>(
+    fn run_hop<NM: NodeManager>(
         first_contact_index: usize,
-        source: &SharedRouteStage<NM, PSegmentationManager>,
+        source: &SharedRouteStage<NM, EVLManager>,
         bundle: &Bundle,
-        contacts: &[Rc<RefCell<Contact<NM, PSegmentationManager>>>],
+        contacts: &[Rc<RefCell<Contact<NM, EVLManager>>>],
         tx: &Rc<RefCell<Node<NM>>>,
         rx: &Rc<RefCell<Node<NM>>>,
-    ) -> Option<RouteStage<NM, PSegmentationManager>> {
+    ) -> Option<RouteStage<NM, EVLManager>> {
         try_make_hop(first_contact_index, source, bundle, contacts, tx, rx)
     }
 
@@ -428,8 +426,8 @@ mod tests {
         let tx: Rc<RefCell<Node<NoManagement>>> = make_node(0, NoManagement {});
         let rx: Rc<RefCell<Node<NoManagement>>> = make_node(1, NoManagement {});
 
-        let result: Option<RouteStage<NoManagement, PSegmentationManager>> =
-            start_test(0, &source, &bundle, &[], &tx, &rx);
+        let result: Option<RouteStage<NoManagement, EVLManager>> =
+            run_hop(0, &source, &bundle, &[], &tx, &rx);
 
         assert!(
             result.is_none(),
@@ -440,15 +438,15 @@ mod tests {
     #[test]
     fn test_first_contact_index_beyond_slice() {
         let bundle: Bundle = make_bundle(1.0);
-        let source: Rc<RefCell<RouteStage<NoManagement, PSegmentationManager>>> =
+        let source: Rc<RefCell<RouteStage<NoManagement, EVLManager>>> =
             make_source(0.0, 0, &bundle);
         let tx: Rc<RefCell<Node<NoManagement>>> = make_node(0, NoManagement {});
         let rx: Rc<RefCell<Node<NoManagement>>> = make_node(1, NoManagement {});
-        let contacts: Vec<Rc<RefCell<Contact<NoManagement, PSegmentationManager>>>> =
+        let contacts: Vec<Rc<RefCell<Contact<NoManagement, EVLManager>>>> =
             vec![make_contact(0, 1, 0.0, 200.0, 100.0, 1.0)];
 
-        let result: Option<RouteStage<NoManagement, PSegmentationManager>> =
-            start_test(1, &source, &bundle, &contacts, &tx, &rx);
+        let result: Option<RouteStage<NoManagement, EVLManager>> =
+            run_hop(1, &source, &bundle, &contacts, &tx, &rx);
 
         assert!(
             result.is_none(),
@@ -464,7 +462,7 @@ mod tests {
         let rx = make_node(1, NoManagement {});
         let contacts = vec![make_contact(0, 1, 0.0, 200.0, 100.0, 1.0)];
 
-        let result = start_test(0, &source, &bundle, &contacts, &tx, &rx);
+        let result = run_hop(0, &source, &bundle, &contacts, &tx, &rx);
 
         assert!(
             result.is_none(),
@@ -480,7 +478,7 @@ mod tests {
         let rx = make_node(1, NoManagement {});
         let contacts = vec![make_contact(0, 1, 0.0, 200.0, 100.0, 1.0)];
 
-        let result = start_test(0, &source, &bundle, &contacts, &tx, &rx);
+        let result = run_hop(0, &source, &bundle, &contacts, &tx, &rx);
 
         assert!(
             result.is_some(),
@@ -502,7 +500,7 @@ mod tests {
         contact2.borrow_mut().suppressed = true;
         contact3.borrow_mut().suppressed = true;
 
-        let result = start_test(
+        let result = run_hop(
             0,
             &source,
             &bundle,
@@ -527,7 +525,7 @@ mod tests {
             0, 1, 0.0, 2000.0, 100.0, 1.0,
         )];
 
-        let result = start_test(0, &source, &bundle, &contacts, &tx, &rx);
+        let result = run_hop(0, &source, &bundle, &contacts, &tx, &rx);
 
         assert!(
             result.is_none(),
@@ -546,11 +544,179 @@ mod tests {
             0, 1, 0.0, 2000.0, 100.0, 1.0,
         )];
 
-        let result = start_test(0, &source, &bundle, &contacts, &tx, &rx);
+        let result = run_hop(0, &source, &bundle, &contacts, &tx, &rx);
 
         assert!(
             result.is_none(),
             "TEST FAILED: Expected None when rx node refuses to receive."
+        );
+    }
+
+    // make_contact(tx_id, rx_id, start, end, rate, delay);
+    // tx_start = max(contact.start, at_time)
+    // tx_end = tx_start + size / rate
+    // arrival = tx_end + delay
+
+    #[cfg(feature = "node_proc")]
+    #[test]
+    fn test_node_proc_delay() {
+        let bundle = make_bundle(10.0);
+        let source = make_source(0.0, 0, &bundle);
+        let tx = make_node(0, MockNodeManager::processing(2.0));
+        let rx = make_node(1, MockNodeManager::accepting());
+        let contacts = vec![make_contact::<MockNodeManager>(
+            0, 1, 0.0, 2000.0, 100.0, 1.0,
+        )];
+
+        let result = run_hop(0, &source, &bundle, &contacts, &tx, &rx);
+
+        assert!(
+            result.is_some(),
+            "TEST FAILED: Expected Some even with node processing delay."
+        );
+        let route = result.unwrap();
+        // without node_proc : sending_time=0.0 -> tx_end=0.1 -> arrival=1.1
+        // with node_proc  : sending_time=2.0 -> tx_end=2.1 -> arrival=3.1
+        assert_eq!(
+            route.at_time, 3.1,
+            "TEST FAILED: Arrival should account for the 2s node processing delay (expected 3.1, got {}).",
+            route.at_time
+        );
+    }
+
+    #[test]
+    fn test_best_contact_selected_1_hop() {
+        let bundle = make_bundle(100.0);
+        let source = make_source(5.0, 0, &bundle);
+        let tx = make_node(0, NoManagement {});
+        let rx = make_node(1, NoManagement {});
+
+        // Contact A : arrival = 11.0
+        let contact_a = make_contact(0, 1, 0.0, 50.0, 100.0, 5.0);
+        // Contact B : arrival = 8.0 -> should be the one returned
+        let contact_b = make_contact(0, 1, 0.0, 200.0, 100.0, 2.0);
+        // Contact C : start=10.0 > 8.0
+        let contact_c = make_contact(0, 1, 10.0, 100.0, 50.0, 1.0);
+        // Contact D : start=20.0 > 8.0
+        let contact_d = make_contact(0, 1, 20.0, 30.0, 100.0, 0.5);
+
+        let result = run_hop(
+            0,
+            &source,
+            &bundle,
+            &[contact_a, contact_b, contact_c, contact_d],
+            &tx,
+            &rx,
+        );
+
+        assert!(
+            result.is_some(),
+            "TEST FAILED: Expected Some, at least one contact should be valid."
+        );
+
+        let route = result.unwrap();
+
+        // Contact B should have been selected here
+        // arrival = tx_end(6.0) + delay(2.0) = 8.0
+        assert_eq!(
+            route.at_time, 8.0,
+            "TEST FAILED: Expected arrival 8.0 from contact B (got {}).",
+            route.at_time
+        );
+        assert_eq!(
+            route.hop_count, 1,
+            "TEST FAILED: Expected hop_count=1 (got {}).",
+            route.hop_count
+        );
+        assert_eq!(
+            route.cumulative_delay, 2.0,
+            "TEST FAILED: Expected cumulative_delay=2.0 from contact B delay (got {}).",
+            route.cumulative_delay
+        );
+        assert_eq!(
+            route.expiration, 200.0,
+            "TEST FAILED: Expected expiration=200.0 from contact B end (got {}).",
+            route.expiration
+        );
+        assert!(
+            route.via.is_some(),
+            "TEST FAILED: Expected a ViaHop to be set."
+        );
+    }
+
+    #[test]
+    fn test_best_contact_selected_2_hops() {
+        let bundle = make_bundle(100.0);
+
+        let source = make_source(0.0, 0, &bundle);
+        let tx0 = make_node(0, NoManagement {});
+        let rx1 = make_node(1, NoManagement {});
+
+        // Contact A : arrival = 2.0 -> the best one
+        let contact_a = make_contact(0, 1, 0.0, 200.0, 100.0, 1.0);
+        // Contact B : arrival = 6.0
+        let contact_b = make_contact(0, 1, 0.0, 200.0, 100.0, 5.0);
+
+        let hop1 = run_hop(0, &source, &bundle, &[contact_a, contact_b], &tx0, &rx1)
+            .expect("TEST FAILED: Hop 1 should succeed.");
+
+        assert_eq!(
+            hop1.at_time, 2.0,
+            "Hop 1 FAILED: Expected arrival 2.0 (got {}).",
+            hop1.at_time
+        );
+        assert_eq!(
+            hop1.hop_count, 1,
+            "Hop 1 FAILED: Expected hop_count=1 (got {}).",
+            hop1.hop_count
+        );
+        assert_eq!(
+            hop1.cumulative_delay, 1.0,
+            "Hop 1 FAILED: Expected cumulative_delay=1.0 (got {}).",
+            hop1.cumulative_delay
+        );
+        assert_eq!(
+            hop1.expiration, 200.0,
+            "Hop 1 FAILED: Expected expiration=200.0 (got {}).",
+            hop1.expiration
+        );
+
+        // We take the result of the first hop as a new source
+        let source2: SharedRouteStage<NoManagement, EVLManager> = Rc::new(RefCell::new(hop1));
+        let tx1 = make_node(1, NoManagement {});
+        let rx2 = make_node(2, NoManagement {});
+
+        // Contact C : arrival = 3.5 -> the best one
+        let contact_c = make_contact(1, 2, 0.0, 200.0, 100.0, 0.5);
+        // Contact D : arrival = 5.0
+        let contact_d = make_contact(1, 2, 0.0, 200.0, 100.0, 2.0);
+
+        let hop2 = run_hop(0, &source2, &bundle, &[contact_c, contact_d], &tx1, &rx2)
+            .expect("TEST FAILED: Hop 2 should succeed.");
+
+        assert_eq!(
+            hop2.at_time, 3.5,
+            "Hop 2 FAILED: Expected arrival 3.5 (got {}).",
+            hop2.at_time
+        );
+        assert_eq!(
+            hop2.hop_count, 2,
+            "Hop 2 FAILED: Expected hop_count=2 (got {}).",
+            hop2.hop_count
+        );
+        assert_eq!(
+            hop2.cumulative_delay, 1.5,
+            "Hop 2 FAILED: Expected cumulative_delay=1.5 (got {}).",
+            hop2.cumulative_delay
+        );
+        assert_eq!(
+            hop2.expiration, 199.0,
+            "Hop 2 FAILED: Expected expiration=199.0 from min(200.0-1.0, 200.0) (got {}).",
+            hop2.expiration
+        );
+        assert!(
+            hop2.via.is_some(),
+            "Hop 2 FAILED: Expected a ViaHop to be set."
         );
     }
 }
