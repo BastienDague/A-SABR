@@ -249,3 +249,419 @@ impl Parser<PSegmentationManager> for PSegmentationManager {
         super::parse::<PSegmentationManager>(lexer)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        bundle::Bundle,
+        contact::ContactInfo,
+        contact_manager::ContactManager,
+        contact_manager::segmentation::BaseSegmentationManager,
+    };
+
+    #[test]
+    fn test_new_manager() {
+        // We create simple segments for rate and delay.
+        let rate_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 2.0,
+        }];
+
+        let delay_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 1.0,
+        }];
+
+        // Create the priority segmentation manager
+        let manager = PSegmentationManager::new(rate_intervals, delay_intervals);
+
+        // When the manager is created, booking should be empty
+        assert!(manager.booking.is_empty());
+
+        // Check that the rate intervals were stored correctly
+        assert_eq!(manager.rate_intervals.len(), 1);
+        assert_eq!(manager.rate_intervals[0].start, 0.0);
+        assert_eq!(manager.rate_intervals[0].end, 10.0);
+        assert_eq!(manager.rate_intervals[0].val, 2.0);
+
+        // Check that the delay intervals were stored correctly
+        assert_eq!(manager.delay_intervals.len(), 1);
+        assert_eq!(manager.delay_intervals[0].start, 0.0);
+        assert_eq!(manager.delay_intervals[0].end, 10.0);
+        assert_eq!(manager.delay_intervals[0].val, 1.0);
+    }
+
+    #[test]
+    fn test_manager_initial_state() {
+        // This test checks the initial state of the manager after creation.
+
+        let rate_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 1.0,
+        }];
+
+        let delay_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 1.0,
+        }];
+
+        let manager = PSegmentationManager::new(rate_intervals, delay_intervals);
+
+        // The manager should start with no booking intervals
+        assert!(manager.booking.is_empty());
+    }
+
+    #[test]
+    fn test_new_manager_from_trait() {
+        // Same idea as the previous test, but using the trait constructor.
+
+        let rate_intervals = vec![Segment {
+            start: 5.0,
+            end: 15.0,
+            val: 4.0,
+        }];
+
+        let delay_intervals = vec![Segment {
+            start: 5.0,
+            end: 15.0,
+            val: 2.0,
+        }];
+
+        let manager =
+            <PSegmentationManager as BaseSegmentationManager>::new(
+                rate_intervals,
+                delay_intervals,
+            );
+
+        assert!(manager.booking.is_empty());
+
+        assert_eq!(manager.rate_intervals.len(), 1);
+        assert_eq!(manager.rate_intervals[0].start, 5.0);
+        assert_eq!(manager.rate_intervals[0].end, 15.0);
+        assert_eq!(manager.rate_intervals[0].val, 4.0);
+
+        assert_eq!(manager.delay_intervals.len(), 1);
+        assert_eq!(manager.delay_intervals[0].start, 5.0);
+        assert_eq!(manager.delay_intervals[0].end, 15.0);
+        assert_eq!(manager.delay_intervals[0].val, 2.0);
+    }
+
+    #[test]
+    fn test_try_init_creates_booking_interval() {
+        // After try_init, booking should contain one interval
+        // covering the whole contact with default priority -1.
+
+        let rate_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 2.0,
+        }];
+
+        let delay_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 1.0,
+        }];
+
+        let mut manager = PSegmentationManager::new(rate_intervals, delay_intervals);
+
+        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
+
+        assert!(manager.try_init(&contact));
+
+        assert_eq!(manager.booking.len(), 1);
+        assert_eq!(manager.booking[0].start, 0.0);
+        assert_eq!(manager.booking[0].end, 10.0);
+        assert_eq!(manager.booking[0].val, -1);
+    }
+
+    #[test]
+    fn test_dry_run_returns_none_when_not_initialized() {
+        // The manager starts with no booking interval.
+        // So dry_run_tx should return None.
+
+        let rate_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 2.0,
+        }];
+
+        let delay_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 1.0,
+        }];
+
+        let manager = PSegmentationManager::new(rate_intervals, delay_intervals);
+
+        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
+
+        let bundle = Bundle {
+            source: 1,
+            destinations: vec![2],
+            priority: 0,
+            size: 4.0,
+            expiration: 100.0,
+        };
+
+        let result = manager.dry_run_tx(&contact, 0.0, &bundle);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_dry_run_returns_some_after_init() {
+        // After try_init, the manager has one booking interval.
+        // Here the bundle can be transmitted, so dry_run_tx should return Some.
+
+        let rate_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 2.0,
+        }];
+
+        let delay_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 1.0,
+        }];
+
+        let mut manager = PSegmentationManager::new(rate_intervals, delay_intervals);
+
+        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
+        assert!(manager.try_init(&contact));
+
+        let bundle = Bundle {
+            source: 1,
+            destinations: vec![2],
+            priority: 0,
+            size: 4.0,
+            expiration: 100.0,
+        };
+
+        let result = manager.dry_run_tx(&contact, 0.0, &bundle);
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_dry_run_uses_at_time_as_start_when_inside_contact() {
+        // If at_time is inside the booking interval,
+        // the transmission should start at at_time.
+
+        let rate_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 2.0,
+        }];
+
+        let delay_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 1.0,
+        }];
+
+        let mut manager = PSegmentationManager::new(rate_intervals, delay_intervals);
+
+        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
+        assert!(manager.try_init(&contact));
+
+        let bundle = Bundle {
+            source: 1,
+            destinations: vec![2],
+            priority: 0,
+            size: 4.0,
+            expiration: 100.0,
+        };
+
+        let result = manager.dry_run_tx(&contact, 3.0, &bundle).unwrap();
+
+        // max(seg.start, at_time) = max(0,3) = 3
+        assert_eq!(result.tx_start, 3.0);
+    }
+
+    #[test]
+    fn test_dry_run_returns_none_when_bundle_is_too_large() {
+        // The bundle is too large to finish before the contact end.
+        // So dry_run_tx should return None.
+
+        let rate_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 1.0,
+        }];
+
+        let delay_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 1.0,
+        }];
+
+        let mut manager = PSegmentationManager::new(rate_intervals, delay_intervals);
+
+        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
+        assert!(manager.try_init(&contact));
+
+        let bundle = Bundle {
+            source: 1,
+            destinations: vec![2],
+            priority: 0,
+            size: 20.0,
+            expiration: 100.0,
+        };
+
+        let result = manager.dry_run_tx(&contact, 0.0, &bundle);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_dry_run_returns_correct_tx_values() {
+        // This test checks that the values returned by dry_run_tx are correct.
+
+        let rate_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 1.0,
+        }];
+
+        let delay_intervals = vec![
+            Segment {
+                start: 0.0,
+                end: 4.0,
+                val: 1.0,
+            },
+            Segment {
+                start: 4.0,
+                end: 10.0,
+                val: 3.0,
+            },
+        ];
+
+        let mut manager = PSegmentationManager::new(rate_intervals, delay_intervals);
+
+        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
+        assert!(manager.try_init(&contact));
+
+        let bundle = Bundle {
+            source: 1,
+            destinations: vec![2],
+            priority: 0,
+            size: 5.0,
+            expiration: 100.0,
+        };
+
+        let result = manager.dry_run_tx(&contact, 0.0, &bundle).unwrap();
+
+        // max(seg.start, at_time)
+        assert_eq!(result.tx_start, 0.0);
+        // bundle.size = 5, rate_intervals[0].val = 1, so tx_end = 0 + 5 = 5
+        assert_eq!(result.tx_end, 5.0);
+        // delay_intervals[1].val
+        assert_eq!(result.delay, 3.0);
+        // booking[0].end = 10.0
+        assert_eq!(result.expiration, 10.0);
+        // tx_end + delay
+        assert_eq!(result.arrival, 8.0);
+    }
+
+    #[test]
+    fn test_schedule_tx_updates_booking() {
+        // schedule_tx should reserve the transmission interval
+        // and store the bundle priority in booking.
+
+        let rate_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 2.0,
+        }];
+
+        let delay_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 1.0,
+        }];
+
+        let mut manager = PSegmentationManager::new(rate_intervals, delay_intervals);
+
+        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
+        assert!(manager.try_init(&contact));
+
+        let bundle = Bundle {
+            source: 1,
+            destinations: vec![2],
+            priority: 2,
+            size: 4.0,
+            expiration: 100.0,
+        };
+
+        let result = manager.schedule_tx(&contact, 0.0, &bundle);
+        assert!(result.is_some());
+
+        // The booking interval should be split into:
+        // [0,2] with priority 2 and [2,10] with priority -1
+        assert_eq!(manager.booking.len(), 2);
+
+        assert_eq!(manager.booking[0].start, 0.0);
+        assert_eq!(manager.booking[0].end, 2.0);
+        assert_eq!(manager.booking[0].val, 2);
+
+        assert_eq!(manager.booking[1].start, 2.0);
+        assert_eq!(manager.booking[1].end, 10.0);
+        assert_eq!(manager.booking[1].val, -1);
+    }
+
+    #[test]
+    fn test_dry_run_skips_booked_interval_for_lower_priority() {
+        // After a higher priority bundle is scheduled,
+        // a lower priority bundle should start after the booked interval.
+
+        let rate_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 2.0,
+        }];
+
+        let delay_intervals = vec![Segment {
+            start: 0.0,
+            end: 10.0,
+            val: 1.0,
+        }];
+
+        let mut manager = PSegmentationManager::new(rate_intervals, delay_intervals);
+
+        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
+        assert!(manager.try_init(&contact));
+
+        let high_priority_bundle = Bundle {
+            source: 1,
+            destinations: vec![2],
+            priority: 2,
+            size: 4.0,
+            expiration: 100.0,
+        };
+
+        assert!(manager.schedule_tx(&contact, 0.0, &high_priority_bundle).is_some());
+
+        let low_priority_bundle = Bundle {
+            source: 1,
+            destinations: vec![2],
+            priority: 1,
+            size: 4.0,
+            expiration: 100.0,
+        };
+
+        let result = manager.dry_run_tx(&contact, 0.0, &low_priority_bundle).unwrap();
+
+        // The first interval [0,2] is booked with priority 2,
+        // so a bundle with priority 1 must start at 2.
+        assert_eq!(result.tx_start, 2.0);
+    }
+
+    //booking + priority 
+}
