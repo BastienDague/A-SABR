@@ -215,6 +215,15 @@ mod tests {
         Bundle { source: 0, destinations: vec![dest], priority, size, expiration }
     }
 
+        fn assert_time_hop(res: &PathFindingOutput<NoManagement, EVLManager>, dest: usize, expected_time: f64, expected_hop: u16, distance: &str){
+        let r = res.by_destination[dest]
+            .as_ref()
+            .unwrap_or_else(|| panic!("{distance} : No route found to node {dest}"))
+            .borrow();
+        assert_eq!(r.at_time, expected_time, "{distance} : Arrival time should be {expected_time}");
+        assert_eq!(r.hop_count, expected_hop, "{distance} : Should be {expected_hop} hops");
+    }
+
     fn unit_graph_test() -> Rc<RefCell<Multigraph<NoManagement, EVLManager>>> {
         Rc::new(RefCell::new(Multigraph::new(
             vec![make_node(0, "A"), make_node(1, "B"), make_node(2, "C")],
@@ -268,32 +277,21 @@ mod tests {
         let mg = unit_graph_test();
 
         let mut algo_hop = NodeParentingTreeExcl::<NoManagement, EVLManager, Hop>::new(mg.clone());
-        let mut algo_sabr =
-            NodeParentingTreeExcl::<NoManagement, EVLManager, SABR>::new(mg.clone());
+        let mut algo_sabr = NodeParentingTreeExcl::<NoManagement, EVLManager, SABR>::new(mg.clone());
 
         let bundle = make_bundle(2, 1, 1.0, 2000.0);
 
-        // With Hop
-        let res = algo_hop
+        let res_hop = algo_hop
             .get_next(0.0, 0, &bundle, &[][..])
             .expect("Hop : Routing Failed !");
-        let r = res.by_destination[2]
-            .as_ref()
-            .expect("Hop : No route found to node 2")
-            .borrow();
-        assert_eq!(r.at_time, 2.02, "Hop : Arrival time should be 2.02");
-        assert_eq!(r.hop_count, 2, "Hop : Should be 2 Hop");
 
-        // With SABR
+        assert_time_hop(&res_hop, 2, 2.02, 2, "Hop");
+
         let res_sabr = algo_sabr
             .get_next(0.0, 0, &bundle, &[][..])
             .expect("SABR : Routing Failed !");
-        let r_sabr = res_sabr.by_destination[2]
-            .as_ref()
-            .expect("SABR : No route found to node 2")
-            .borrow();
-        assert_eq!(r_sabr.at_time, 2.02, "SABR : Arrival time should be 2.02");
-        assert_eq!(r_sabr.hop_count, 2, "SABR : Should be 2 Hop");
+
+        assert_time_hop(&res_sabr, 2, 2.02, 2, "SABR");
     }
 
     #[test]
@@ -306,20 +304,18 @@ mod tests {
         let bundle = make_bundle(2, 1, 1.0, 2000.0);
         let excluded = vec![1];
 
-        // With Hop
-        let res = algo_hop
+        let res_hop = algo_hop
             .get_next(0.0, 0, &bundle, &excluded[..])
             .expect("Hop : Routing Failed !");
         assert!(
-            res.by_destination[1].is_none(),
+            res_hop.by_destination[1].is_none(),
             "Hop : B should be excluded"
         );
         assert!(
-            res.by_destination[2].is_none(),
+            res_hop.by_destination[2].is_none(),
             "Hop : C should not be accessible without B"
         );
 
-        // With SABR
         let res_sabr = algo_sabr
             .get_next(0.0, 0, &bundle, &excluded[..])
             .expect("SABR : Routing Failed !");
@@ -369,27 +365,17 @@ mod tests {
 
         let bundle = make_bundle(2, 1, 1.0, 2000.0);
 
-        // Hop
         let res_hop = algo_hop
             .get_next(0.0, 0, &bundle, &[][..])
             .expect("Hop : Routing Failed !");
-        let r_hop = res_hop.by_destination[2]
-            .as_ref()
-            .expect("Hop : No route found to node 2")
-            .borrow();
-        assert_eq!(r_hop.hop_count, 1, "Hop : Should be 1 Hop");
-        assert_eq!(r_hop.at_time, 10.01, "Hop : Arrival time should be 10.01");
 
-        // SABR
+        assert_time_hop(&res_hop, 2, 10.01, 1, "Hop");
+
         let res_sabr = algo_sabr
             .get_next(0.0, 0, &bundle, &[][..])
             .expect("SABR : Routing Failed !");
-        let r_sabr = res_sabr.by_destination[2]
-            .as_ref()
-            .expect("SABR : No route found to node 2")
-            .borrow();
-        assert_eq!(r_sabr.hop_count, 2, "SABR : Should be 2 Hop");
-        assert_eq!(r_sabr.at_time, 0.13, "SABR : Arrival time should be 0.13");
+
+        assert_time_hop(&res_sabr, 2, 0.13, 2, "SABR");
     }
 
     #[test]
@@ -404,24 +390,14 @@ mod tests {
         let res_hop = algo_hop
             .get_next(0.0, 0, &bundle, &[][..])
             .expect("Routing Failed !");
-        let r_hop = res_hop.by_destination[3]
-            .as_ref()
-            .expect("No route found to node 3")
-            .borrow();
 
-        assert_eq!(r_hop.at_time, 30.0, "Hop : Arrival time should be 30.0");
-        assert_eq!(r_hop.hop_count, 2, "Hop : Should be 2 hops");
+        assert_time_hop(&res_hop, 3, 30.0, 2, "Hop");
 
         let res_sabr = algo_sabr
             .get_next(0.0, 0, &bundle, &[][..])
             .expect("Routing Failed !");
-        let r_sabr = res_sabr.by_destination[3]
-            .as_ref()
-            .expect("No route found to node 3")
-            .borrow();
 
-        assert_eq!(r_sabr.at_time, 30.0, "SABR : Arrival time should be 30.0");
-        assert_eq!(r_sabr.hop_count, 3, "SABR : Should be 3 hops");
+        assert_time_hop(&res_sabr, 3, 30.0, 3, "SABR");
     }
 
     #[test]
@@ -436,23 +412,13 @@ mod tests {
         let res_hop = algo_hop
             .get_next(0.0, 0, &bundle, &[][..])
             .expect("Routing Failed !");
-        let r_hop = res_hop.by_destination[4]
-            .as_ref()
-            .expect("No route found to node 4")
-            .borrow();
 
-        assert_eq!(r_hop.at_time, 50.0, "Hop : Arrival time should be 50.0");
-        assert_eq!(r_hop.hop_count, 3, "Hop : Should be 3 hops");
+        assert_time_hop(&res_hop, 4, 50.0, 3, "Hop");
 
         let res_sabr = algo_sabr
             .get_next(0.0, 0, &bundle, &[][..])
             .expect("Routing Failed !");
-        let r_sabr = res_sabr.by_destination[4]
-            .as_ref()
-            .expect("No route found to node 4")
-            .borrow();
 
-        assert_eq!(r_sabr.at_time, 50.0, "SABR : Arrival time should be 50.0");
-        assert_eq!(r_sabr.hop_count, 4, "SABR : Should be 4 hops");
+        assert_time_hop(&res_sabr, 4, 50.0, 4, "SABR");
     }
 }
