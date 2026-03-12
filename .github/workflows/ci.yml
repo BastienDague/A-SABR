@@ -23,7 +23,7 @@ jobs:
         with:
           components: rustfmt
 
-      
+      - uses: swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
   
   clippy:
@@ -50,7 +50,7 @@ jobs:
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
-      - run: cargo test --lib --bins --tests --verbose
+      - run: cargo test --all-targets --all-features
   
   coverage:
     name: Code Coverage
