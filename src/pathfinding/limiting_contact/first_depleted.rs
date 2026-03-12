@@ -13,7 +13,6 @@ use crate::{
 ///
 /// # Returns
 ///
-/// A boolean value:
 /// * `true` if `a` has a smaller original transmission volume than `b`.
 /// * `false` otherwise.
 fn had_less_volume_than<NM: NodeManager, CM: ContactManager>(

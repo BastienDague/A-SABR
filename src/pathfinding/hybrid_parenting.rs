@@ -17,7 +17,7 @@ use crate::{
     types::{Date, NodeID},
 };
 
-/// A trait that allows HybridParenting to handle nage the lexicographic costs.
+/// A trait that allows HybridParenting to handle the lexicographic costs.
 ///
 /// # Type Parameters
 /// - `CM`: A type that implements the `ContactManager` trait, representing the contact management
@@ -40,7 +40,7 @@ where
     /// - `false` otherwise.
     fn can_retain(prop: &RouteStage<NM, CM>, known: &RouteStage<NM, CM>) -> bool;
 
-    /// Determines whether the knwon route should be pruned due to the proposition's retention.
+    /// Determines whether the known route should be pruned due to the proposition's retention.
     ///
     /// # Parameters
     /// - `prop`: A reference to the proposed `RouteStage`. This represents the proposition that was retained.
@@ -62,6 +62,7 @@ where
 /// This type is designed to derive easily a PathFindingOutput from this work area.
 ///
 /// # Type Parameters
+/// - `NM`: A type implementing the `NodeManager` trait.
 /// - `CM`: A type implementing the `ContactManager` trait, which handles contacts for routing.
 struct HybridParentingWorkArea<NM: NodeManager, CM: ContactManager> {
     /// The bundle associated with this work area.
@@ -132,7 +133,7 @@ impl<NM: NodeManager, CM: ContactManager> HybridParentingWorkArea<NM, CM> {
     }
 }
 
-use super::{try_make_hop, PathFindingOutput, Pathfinding};
+use super::{PathFindingOutput, Pathfinding, try_make_hop};
 
 /// Attempts to insert a new route proposal into the pathfinding output tree.
 ///
@@ -225,7 +226,7 @@ macro_rules! define_mpt {
     ($name:ident, $is_tree_output:tt, $with_exclusions:tt) => {
         /// A multipath tracking (SPSN v2) implementation of Dijkstra algorithm.
         ///
-        /// Use this implementation for optimized pahtfinding precision.
+        /// Use this implementation for optimized pathfinding precision.
         ///
         /// # Type Parameters
         ///
@@ -243,11 +244,8 @@ macro_rules! define_mpt {
             _phantom_distance: PhantomData<D>,
         }
 
-        impl<
-                NM: NodeManager,
-                CM: ContactManager,
-                D: Distance<NM, CM> + HybridParentingOrd<NM, CM>,
-            > Pathfinding<NM, CM> for $name<NM, CM, D>
+        impl<NM: NodeManager, CM: ContactManager, D: Distance<NM, CM> + HybridParentingOrd<NM, CM>>
+            Pathfinding<NM, CM> for $name<NM, CM, D>
         {
             /// Constructs a new `HybridParenting` instance with the provided nodes and contacts.
             ///
@@ -275,11 +273,12 @@ macro_rules! define_mpt {
             /// * `current_time` - The current time used for evaluating routes.
             /// * `source` - The `NodeID` of the source node from which to begin pathfinding.
             /// * `bundle` - The `Bundle` associated with the pathfinding operation.
-            /// * `excluded_nodes` - A list of `NodeID`s to be excluded from the pathfinding.
+            /// * `excluded_nodes_sorted` - A sorted list of `NodeID`s to be excluded from the pathfinding.
             ///
             /// # Returns
             ///
-            /// * `PathfindingOutput<CM, D>` - The resulting pathfinding output, including the routes found.
+            /// * `<ResultPathFindingOutput<NM, CM>, ASABRError>` - The resulting pathfinding output, including the routes found,
+            /// or an error if the operation fails.
             fn get_next(
                 &mut self,
                 current_time: Date,
@@ -333,31 +332,22 @@ macro_rules! define_mpt {
                             }
                         }
 
-                        let Some(first_contact_index) =
+                        if let Some(first_contact_index) =
                             receiver.lazy_prune_and_get_first_idx(current_time)
-                        else {
-                            continue;
-                        };
-
-                        let Some(route_proposition) = try_make_hop(
-                            first_contact_index,
-                            &from_route,
-                            bundle,
-                            &receiver.contacts_to_receiver,
-                            &sender.node,
-                            &receiver.node,
-                        ) else {
-                            continue;
-                        };
-
-                        // This transforms a prop in the stack to a prop in the heap
-                        let Some(new_route) =
-                            try_insert::<NM, CM, D>(route_proposition, &mut tree)?
-                        else {
-                            continue;
-                        };
-
-                        priority_queue.push(Reverse(DistanceWrapper::new(new_route.clone())));
+                            && let Some(route_proposition) = try_make_hop(
+                                first_contact_index,
+                                &from_route,
+                                bundle,
+                                &receiver.contacts_to_receiver,
+                                &sender.node,
+                                &receiver.node,
+                            )
+                            // This transforms a prop in the stack to a prop in the heap
+                            && let Some(new_route) =
+                                try_insert::<NM, CM, D>(route_proposition, &mut tree)?
+                        {
+                            priority_queue.push(Reverse(DistanceWrapper::new(new_route.clone())));
+                        }
                     }
                 }
 

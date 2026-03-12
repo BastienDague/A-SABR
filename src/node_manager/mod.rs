@@ -19,7 +19,7 @@ macro_rules! define_node_manager {
             ///
             /// # Parameters
             /// - `at_time`: The time at which the dry-run process simulation should start.
-            /// - `bundle`: A reference to the `Bundle` to be processed.
+            /// - `bundle`: A mutable reference to the `Bundle` to be processed.
             ///
             /// # Returns
             /// - A `Date` indicating the estimated completion time for processing the bundle.
@@ -32,7 +32,7 @@ macro_rules! define_node_manager {
             /// within the provided start and end times, without actually transmitting the data.
             ///
             /// # Parameters
-            /// - `waiting_since`: The arrival time at the transmiter (allows to calculate a retention time)
+            /// - `waiting_since`: The arrival time at the transmitter (allows to calculate a retention time)
             /// - `start`: The start time of the transmission window.
             /// - `end`: The end time of the transmission window.
             /// - `bundle`: A reference to the `Bundle` to be transmitted.
@@ -64,7 +64,7 @@ macro_rules! define_node_manager {
             ///
             /// # Parameters
             /// - `at_time`: The time at which the processing should start.
-            /// - `bundle`: A reference to the `Bundle` to be processed.
+            /// - `bundle`: A mutable reference to the `Bundle` to be processed.
             ///
             /// # Returns
             /// - A `Date` indicating the completion time for the processing task.
@@ -77,7 +77,7 @@ macro_rules! define_node_manager {
             /// transmitted within the provided time window. If successful, the bundle is transmitted.
             ///
             /// # Parameters
-            /// - `waiting_since`: The arrival time at the transmiter (allows to calculate a retention time)
+            /// - `waiting_since`: The arrival time at the transmitter (allows to calculate a retention time)
             /// - `start`: The start time of the transmission window.
             /// - `end`: The end time of the transmission window.
             /// - `bundle`: A reference to the `Bundle` to be transmitted.
@@ -144,7 +144,7 @@ macro_rules! define_node_manager {
             }
         }
 
-        /// Implementation of `NodeManager` for boxed dynamic types (`Box<dyn ContactManager>`).
+        /// Implementation of `NodeManager` for boxed dynamic types (`Box<dyn NodeManager>`).
         impl NodeManager for Box<dyn NodeManager> {
             /// Delegates the dry_run method to the boxed object.
             #[cfg(feature = "node_proc")]

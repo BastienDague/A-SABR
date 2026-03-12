@@ -14,7 +14,7 @@ use crate::{
     types::{Date, NodeID},
 };
 
-use super::{try_make_hop, PathFindingOutput, Pathfinding};
+use super::{PathFindingOutput, Pathfinding, try_make_hop};
 
 macro_rules! define_node_graph {
     ($name:ident, $is_tree_output:tt, $with_exclusions:tt) => {
@@ -63,11 +63,12 @@ macro_rules! define_node_graph {
             /// * `current_time` - The current time used for evaluating routes.
             /// * `source` - The `NodeID` of the source node from which to begin pathfinding.
             /// * `bundle` - The `Bundle` associated with the pathfinding operation.
-            /// * `excluded_nodes` - A list of `NodeID`s to be excluded from the pathfinding.
+            /// * `excluded_nodes_sorted` - A sorted list of `NodeID`s to be excluded from the pathfinding.
             ///
             /// # Returns
             ///
-            /// * `PathfindingOutput<CM, D>` - The resulting pathfinding output, including the routes found.
+            /// * `Result<PathFindingOutput<NM, CM>, ASABRError>` - The resulting pathfinding output, including the routes found,
+            /// or an error if the operation fails.
             fn get_next(
                 &mut self,
                 current_time: Date,
@@ -127,41 +128,36 @@ macro_rules! define_node_graph {
                             }
                         }
 
-                        let Some(first_contact_index) =
+                        if let Some(first_contact_index) =
                             receiver.lazy_prune_and_get_first_idx(current_time)
-                        else {
-                            continue;
-                        };
-
-                        let Some(route_proposition) = try_make_hop(
-                            first_contact_index,
-                            &from_route,
-                            bundle,
-                            &receiver.contacts_to_receiver,
-                            &sender.node,
-                            &receiver.node,
-                        ) else {
-                            continue;
-                        };
-
-                        let idx = receiver.node.borrow().info.id as usize;
-                        let push = match tree.by_destination[idx].as_ref() {
-                            Some(known_route_ref) => {
-                                let mut known_route = known_route_ref.try_borrow_mut()?;
-                                if D::cmp(&route_proposition, &known_route) == Ordering::Less {
-                                    known_route.is_disabled = true;
-                                    true
-                                } else {
-                                    false
+                            && let Some(route_proposition) = try_make_hop(
+                                first_contact_index,
+                                &from_route,
+                                bundle,
+                                &receiver.contacts_to_receiver,
+                                &sender.node,
+                                &receiver.node,
+                            )
+                        {
+                            let idx = receiver.node.borrow().info.id as usize;
+                            let push = match tree.by_destination[idx].as_ref() {
+                                Some(known_route_ref) => {
+                                    let mut known_route = known_route_ref.try_borrow_mut()?;
+                                    if D::cmp(&route_proposition, &known_route) == Ordering::Less {
+                                        known_route.is_disabled = true;
+                                        true
+                                    } else {
+                                        false
+                                    }
                                 }
-                            }
-                            None => true,
-                        };
+                                None => true,
+                            };
 
-                        if push {
-                            let route_ref = Rc::new(RefCell::new(route_proposition));
-                            tree.by_destination[idx] = Some(route_ref.clone());
-                            priority_queue.push(Reverse(DistanceWrapper::new(route_ref)));
+                            if push {
+                                let route_ref = Rc::new(RefCell::new(route_proposition));
+                                tree.by_destination[idx] = Some(route_ref.clone());
+                                priority_queue.push(Reverse(DistanceWrapper::new(route_ref)));
+                            }
                         }
                     }
                 }

@@ -17,7 +17,7 @@ use crate::{
     types::{Date, NodeID},
 };
 
-use super::{try_make_hop, PathFindingOutput, Pathfinding};
+use super::{PathFindingOutput, Pathfinding, try_make_hop};
 
 macro_rules! define_contact_graph {
     ($name:ident, $is_tree_output:tt, $with_exclusions:tt) => {
@@ -87,7 +87,8 @@ macro_rules! define_contact_graph {
             ///
             /// # Returns
             ///
-            /// * `PathfindingOutput<CM>` - The resulting pathfinding output, including the routes found.
+            /// * `<ResultPathFindingOutput<NM, CM>, ASABRError>` - The resulting pathfinding output, including the routes found,
+            /// or an error if the operation fails.
             fn get_next(
                 &mut self,
                 current_time: Date,
