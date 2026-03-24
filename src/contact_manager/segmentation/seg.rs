@@ -237,380 +237,236 @@ impl Parser<SegmentationManager> for SegmentationManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contact_manager::segmentation::BaseSegmentationManager;
+    use crate::{
+        bundle::Bundle,
+        contact::ContactInfo,
+        contact_manager::ContactManager,
+    };
 
-    #[test]
-    fn test_new_manager() {
-        // We create simple segments for rate and delay.
-        // A segment represents a time interval with a value.
-        let rate_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 2.0,
-        }];
-
-        let delay_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 1.0,
-        }];
-
-        // Create the segmentation manager
-        let manager = SegmentationManager::new(rate_intervals, delay_intervals);
-
-        // When the manager is created, free_intervals should be empty
-        assert!(manager.free_intervals.is_empty());
-
-        // Check that the rate intervals were stored correctly
-        assert_eq!(manager.rate_intervals.len(), 1);
-        assert_eq!(manager.rate_intervals[0].start, 0.0);
-        assert_eq!(manager.rate_intervals[0].end, 10.0);
-        assert_eq!(manager.rate_intervals[0].val, 2.0);
-
-        // Check that the delay intervals were stored correctly
-        assert_eq!(manager.delay_intervals.len(), 1);
-        assert_eq!(manager.delay_intervals[0].start, 0.0);
-        assert_eq!(manager.delay_intervals[0].end, 10.0);
-        assert_eq!(manager.delay_intervals[0].val, 1.0);
+    #[derive(Debug, PartialEq, Clone)]
+    enum InputSeg {
+        Delay(Date, Date, Duration),
+        Rate(Date, Date, DataRate),
     }
 
-    #[test]
-    fn test_manager_stores_multiple_intervals() {
-        // This test checks that the manager correctly stores multiple segments.
-
-        let rate_intervals = vec![
-            Segment { start: 0.0, end: 5.0, val: 1.0 },
-            Segment { start: 5.0, end: 10.0, val: 2.0 },
-        ];
-
-        let delay_intervals = vec![
-            Segment { start: 0.0, end: 5.0, val: 0.5 },
-            Segment { start: 5.0, end: 10.0, val: 1.0 },
-        ];
-
-        let manager = SegmentationManager::new(rate_intervals, delay_intervals);
-
-        // Check that both segments were stored
-        assert_eq!(manager.rate_intervals.len(), 2);
-        assert_eq!(manager.delay_intervals.len(), 2);
+    #[derive(Debug, PartialEq, Clone)]
+    enum OutputSeg {
+        Free(Date, Date),
     }
 
-    #[test]
-    fn test_manager_keeps_segment_values() {
-        // This test verifies that the values inside segments are not modified
-        // when the manager is created.
+    #[track_caller]
+    fn start_test(
+        contact_start: Date,
+        contact_end: Date,
+        input: Vec<InputSeg>,
+        output: Vec<OutputSeg>,
+        requests: Vec<(Bundle, f64, bool)>,
+    ) {
+        let contact_info = ContactInfo::new(0, 1, contact_start, contact_end);
+        let mut delay_segments: Vec<Segment<Duration>> = Vec::new();
+        let mut rate_segments: Vec<Segment<DataRate>> = Vec::new();
 
-        let rate_intervals = vec![Segment {
-            start: 0.0,
-            end: 20.0,
-            val: 5.0,
-        }];
+        for seg in input {
+            match seg {
+                InputSeg::Delay(start, end, val) => {
+                    delay_segments.push(Segment { start, end, val })
+                }
+                InputSeg::Rate(start, end, val) => {
+                    rate_segments.push(Segment { start, end, val })
+                }
+            }
+        }
 
-        let delay_intervals = vec![Segment {
-            start: 0.0,
-            end: 20.0,
-            val: 3.0,
-        }];
+        let mut manager = SegmentationManager::new(rate_segments, delay_segments);
+        assert!(manager.try_init(&contact_info));
 
-        let manager = SegmentationManager::new(rate_intervals, delay_intervals);
+        for (i, (bundle, at_time, expect_success)) in requests.iter().enumerate() {
+            let dry_run_res = manager.dry_run_tx(&contact_info, *at_time, bundle);
 
-        // Check stored values
-        assert_eq!(manager.rate_intervals[0].val, 5.0);
-        assert_eq!(manager.delay_intervals[0].val, 3.0);
-    }
-
-    #[test]
-    fn test_manager_initial_state() {
-        // This test checks the initial state of the manager after creation.
-
-        let rate_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 1.0,
-        }];
-
-        let delay_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 1.0,
-        }];
-
-        let manager = SegmentationManager::new(rate_intervals, delay_intervals);
-
-        // The manager should start with no free intervals
-        assert!(manager.free_intervals.is_empty());
-    }
-
-    #[test]
-    fn test_new_manager_from_trait() {
-        // Same idea as the previous test, but using the trait constructor
-        // instead of calling SegmentationManager::new directly.
-
-        let rate_intervals = vec![Segment {
-            start: 5.0,
-            end: 15.0,
-            val: 4.0,
-        }];
-
-        let delay_intervals = vec![Segment {
-            start: 5.0,
-            end: 15.0,
-            val: 2.0,
-        }];
-
-        // Create the manager through the BaseSegmentationManager trait
-        let manager =
-            <SegmentationManager as BaseSegmentationManager>::new(
-                rate_intervals,
-                delay_intervals,
+            assert_eq!(
+                dry_run_res.is_some(),
+                *expect_success,
+                "TEST N°{} FAILED: expected {}, got {}",
+                i,
+                expect_success,
+                dry_run_res.is_some()
             );
 
-        // The manager should contain the intervals we gave
-        assert!(manager.free_intervals.is_empty());
+            // In seg.rs, schedule_tx is only safe when the transmission is possible.
+            if *expect_success {
+                let schedule_tx_res = manager.schedule_tx(&contact_info, *at_time, bundle);
 
-        assert_eq!(manager.rate_intervals.len(), 1);
-        assert_eq!(manager.rate_intervals[0].start, 5.0);
-        assert_eq!(manager.rate_intervals[0].end, 15.0);
-        assert_eq!(manager.rate_intervals[0].val, 4.0);
+                assert_eq!(
+                    schedule_tx_res.is_some(),
+                    true,
+                    "TEST N°{} FAILED: schedule_tx failed unexpectedly.",
+                    i
+                );
 
-        assert_eq!(manager.delay_intervals.len(), 1);
-        assert_eq!(manager.delay_intervals[0].start, 5.0);
-        assert_eq!(manager.delay_intervals[0].end, 15.0);
-        assert_eq!(manager.delay_intervals[0].val, 2.0);
-    }
-    #[test]
-    fn test_dry_run_returns_none_when_not_initialized() {
-        // The manager starts with no free interval.
-        // So dry_run_tx should return None.
+                let dry = dry_run_res.unwrap();
+                let sched = schedule_tx_res.unwrap();
 
-        let rate_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 2.0,
-        }];
+                assert_eq!(dry.tx_start, sched.tx_start, "TEST N°{} FAILED: tx_start mismatch.", i);
+                assert_eq!(dry.tx_end, sched.tx_end, "TEST N°{} FAILED: tx_end mismatch.", i);
+                assert_eq!(dry.delay, sched.delay, "TEST N°{} FAILED: delay mismatch.", i);
+                assert_eq!(dry.expiration, sched.expiration, "TEST N°{} FAILED: expiration mismatch.", i);
+                assert_eq!(dry.arrival, sched.arrival, "TEST N°{} FAILED: arrival mismatch.", i);
+            }
+        }
 
-        let delay_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 1.0,
-        }];
+        let mut actual_output = Vec::new();
+        for seg in &manager.free_intervals {
+            actual_output.push(OutputSeg::Free(seg.start, seg.end));
+        }
 
-        let manager = SegmentationManager::new(rate_intervals, delay_intervals);
-
-        //ContactInfo(tx_node, rx_node, start, end)
-        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
-
-        let bundle = Bundle {
-            source: 1,
-            destinations: vec![2],
-            priority: 0,
-            size: 4.0,
-            expiration: 100.0,
-        };
-
-        let result = manager.dry_run_tx(&contact, 0.0, &bundle);
-
-        assert!(result.is_none());
+        assert_eq!(
+            actual_output, output,
+            "TEST FAILED: actual free intervals do not match expected output."
+        );
     }
 
     #[test]
-    fn test_dry_run_returns_some_after_init() {
-        // After try_init, the manager has one free interval.
-        // Here the bundle can be transmitted, so dry_run_tx should return Some.
-
-        let rate_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 2.0,
-        }];
-
-        let delay_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 1.0,
-        }];
-
-        let mut manager = SegmentationManager::new(rate_intervals, delay_intervals);
-
-        //ContactInfo(tx_node, rx_node, start, end)
-        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
-        assert!(manager.try_init(&contact));
-
-        let bundle = Bundle {
-            source: 1,
-            destinations: vec![2],
-            priority: 0,
-            size: 4.0,
-            expiration: 100.0,
-        };
-
-        let result = manager.dry_run_tx(&contact, 0.0, &bundle);
-
-        assert!(result.is_some());
-        //Option<> -> Some(valeur) ou None
-    }
-
-    #[test]
-    fn test_dry_run_uses_at_time_as_start_when_inside_contact() {
-        // If at_time is inside the free interval,
-        // the transmission should start at at_time.
-
-        let rate_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 2.0,
-        }];
-
-        let delay_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 1.0,
-        }];
-
-        let mut manager = SegmentationManager::new(rate_intervals, delay_intervals);
-
-        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
-        assert!(manager.try_init(&contact));
-
-        let bundle = Bundle {
-            source: 1,
-            destinations: vec![2],
-            priority: 0,
-            size: 4.0,
-            expiration: 100.0,
-        };
-
-        let result = manager.dry_run_tx(&contact, 3.0, &bundle).unwrap();
-        //at_time = 3.0
-
-        // size = 4, rate = 2, so transmission duration = 4/2 = 2
-        //max(free_seg.start, at_time)
-        assert_eq!(result.tx_start, 3.0);
-    }
-
-    #[test]
-    fn test_dry_run_uses_contact_start_when_at_time_is_before_contact() {
-        // If at_time is before the contact,
-        // the transmission should start at the beginning of the free interval.
-
-        let rate_intervals = vec![Segment {
-            start: 5.0,
-            end: 15.0,
-            val: 2.0,
-        }];
-
-        let delay_intervals = vec![Segment {
-            start: 5.0,
-            end: 15.0,
-            val: 1.0,
-        }];
-
-        let mut manager = SegmentationManager::new(rate_intervals, delay_intervals);
-
-        let contact = ContactInfo::new(1, 2, 5.0, 15.0);
-        assert!(manager.try_init(&contact));
-
-        let bundle = Bundle {
-            source: 1,
-            destinations: vec![2],
-            priority: 0,
-            size: 4.0,
-            expiration: 100.0,
-        };
-
-        let result = manager.dry_run_tx(&contact, 0.0, &bundle).unwrap();
-
-        assert_eq!(result.tx_start, 5.0);
-    }
-
-    #[test]
-    fn test_dry_run_returns_none_when_bundle_is_too_large() {
-        // The bundle is too large to finish before the end of the free interval.
-        // So dry_run_tx should return None.
-
-        let rate_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 1.0,
-        }];
-
-        let delay_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 1.0,
-        }];
-
-        let mut manager = SegmentationManager::new(rate_intervals, delay_intervals);
-
-        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
-        assert!(manager.try_init(&contact));
-
-        let bundle = Bundle {
-            source: 1,
-            destinations: vec![2],
-            priority: 0,
-            size: 20.0,
-            expiration: 100.0,
-        };
-
-        let result = manager.dry_run_tx(&contact, 0.0, &bundle);
-
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_dry_run_uses_the_correct_values() {
-        // This test checks that the values returned by dry_run_tx are correct 
-        // based on the rate and delay intervals.
-
-        let rate_intervals = vec![Segment {
-            start: 0.0,
-            end: 10.0,
-            val: 1.0,
-        }];
-
-        let delay_intervals = vec![
-            Segment {
-                start: 0.0,
-                end: 4.0,
-                val: 1.0,
-            },
-            Segment {
-                start: 4.0,
-                end: 10.0,
-                val: 3.0,
-            },
+    fn test_single_bundle_insertions() {
+        let input = vec![
+            InputSeg::Delay(0.0, 200.0, 4.0),
+            InputSeg::Rate(0.0, 200.0, 100.0),
         ];
 
-        let mut manager = SegmentationManager::new(rate_intervals, delay_intervals);
-
-        let contact = ContactInfo::new(1, 2, 0.0, 10.0);
-        assert!(manager.try_init(&contact));
-
-        let bundle = Bundle {
-            source: 1,
-            destinations: vec![2],
-            priority: 0,
-            size: 5.0,
-            expiration: 100.0,
+        let bundle1 = Bundle {
+            source: 0,
+            destinations: vec![1],
+            priority: 1,
+            size: 100.0,
+            expiration: 1000.0,
         };
 
-        let result = manager.dry_run_tx(&contact, 0.0, &bundle).unwrap();
+        let output1 = vec![OutputSeg::Free(1.0, 200.0)];
+        start_test(0.0, 200.0, input.clone(), output1, vec![(bundle1, 0.0, true)]);
 
-        // size = 5, rate = 1 -> tx_end = 5
-        // tx_end = 5 is in the second delay interval, so delay = 3
-        //max(free_seg.start, at_time)
-        assert_eq!(result.tx_start, 0.0);
-        //bundle.size = 5, rate_intervals[0].val = 1, transmission duration = 5, tx_end = 0+5 = 5
-        assert_eq!(result.tx_end, 5.0);
-        //delay_intervals[1].val
-        assert_eq!(result.delay, 3.0);
-        //contact.end = 10.0
-        assert_eq!(result.expiration, 10.0);
-        //tx_end + delay
-        assert_eq!(result.arrival, 8.0);
+        let bundle2 = Bundle {
+            source: 0,
+            destinations: vec![1],
+            priority: 1,
+            size: 4000.0,
+            expiration: 1000.0,
+        };
+
+        let output2 = vec![OutputSeg::Free(0.0, 80.0), OutputSeg::Free(120.0, 200.0)];
+        start_test(0.0, 200.0, input.clone(), output2, vec![(bundle2, 80.0, true)]);
+
+        let bundle3 = Bundle {
+            source: 0,
+            destinations: vec![1],
+            priority: 2,
+            size: 5000.0,
+            expiration: 1000.0,
+        };
+
+        let output3 = vec![
+            OutputSeg::Free(0.0, 150.0),
+            OutputSeg::Free(200.0, 200.0),
+        ];
+        start_test(0.0, 200.0, input.clone(), output3, vec![(bundle3, 150.0, true)]);
+
+        let bundle_too_large = Bundle {
+            source: 0,
+            destinations: vec![1],
+            priority: 1,
+            size: 50_000.0,
+            expiration: 1000.0,
+        };
+
+        let output4 = vec![OutputSeg::Free(0.0, 200.0)];
+        start_test(0.0, 200.0, input, output4, vec![(bundle_too_large, 0.0, false)]);
     }
 
-    //free_intervals : seg works with free intervals and reserves some place in them.
-    //No priority in this manager, so the first free interval that can fit the bundle is chosen.
+    #[test]
+    fn test_multiple_insertions_on_same_contact() {
+        let input = vec![
+            InputSeg::Delay(0.0, 200.0, 4.0),
+            InputSeg::Rate(0.0, 200.0, 100.0),
+        ];
+
+        let bundle1 = Bundle {
+            source: 0,
+            destinations: vec![1],
+            priority: 1,
+            size: 1000.0,
+            expiration: 1000.0,
+        };
+
+        let bundle2 = Bundle {
+            source: 0,
+            destinations: vec![1],
+            priority: 1,
+            size: 500.0,
+            expiration: 1000.0,
+        };
+
+        let bundle3 = Bundle {
+            source: 0,
+            destinations: vec![1],
+            priority: 1,
+            size: 1000.0,
+            expiration: 1000.0,
+        };
+
+        let requests = vec![
+            (bundle1, 0.0, true),   // [0,10]
+            (bundle2, 10.0, true),  // [10,15]
+            (bundle3, 15.0, true),  // [15,25]
+        ];
+
+        let output = vec![OutputSeg::Free(25.0, 200.0)];
+
+        start_test(0.0, 200.0, input, output, requests);
+    }
+
+    #[test]
+    fn test_variable_rate_segments() {
+        let input = vec![
+            InputSeg::Delay(0.0, 200.0, 4.0),
+            InputSeg::Rate(0.0, 50.0, 100.0),
+            InputSeg::Rate(50.0, 200.0, 50.0),
+        ];
+
+        let bundle = Bundle {
+            source: 0,
+            destinations: vec![1],
+            priority: 1,
+            size: 7500.0,
+            expiration: 1000.0,
+        };
+
+        let requests = vec![(bundle, 0.0, true)];
+
+        // 5000 sent between 0 and 50, then 2500 sent between 50 and 100
+        let output = vec![OutputSeg::Free(100.0, 200.0)];
+
+        start_test(0.0, 200.0, input, output, requests);
+    }
+
+    #[test]
+    fn test_start_time_handling() {
+        let input = vec![
+            InputSeg::Delay(5.0, 15.0, 1.0),
+            InputSeg::Rate(5.0, 15.0, 2.0),
+        ];
+
+        let bundle = Bundle {
+            source: 0,
+            destinations: vec![1],
+            priority: 1,
+            size: 4.0,
+            expiration: 1000.0,
+        };
+
+        let requests = vec![
+            (bundle, 0.0, true), // starts at contact start = 5
+        ];
+        // First request uses [5,7], second fails, so remaining free interval is [7,15]
+        let output = vec![OutputSeg::Free(7.0, 15.0)];
+
+        start_test(5.0, 15.0, input, output, requests);
+    }
 }
