@@ -308,9 +308,9 @@ mod tests {
 
                 assert_eq!(dry.tx_start, sched.tx_start, "TEST N°{} FAILED: tx_start mismatch.", i);
                 assert_eq!(dry.tx_end, sched.tx_end, "TEST N°{} FAILED: tx_end mismatch.", i);
-                assert_eq!(dry.delay, sched.delay, "TEST N°{} FAILED: delay mismatch.", i);
+                assert_eq!(dry.rx_start, sched.rx_start, "TEST N°{} FAILED: rx_start mismatch.", i);
                 assert_eq!(dry.expiration, sched.expiration, "TEST N°{} FAILED: expiration mismatch.", i);
-                assert_eq!(dry.arrival, sched.arrival, "TEST N°{} FAILED: arrival mismatch.", i);
+                assert_eq!(dry.rx_end, sched.rx_end, "TEST N°{} FAILED: rx_end mismatch.", i);
             }
         }
 

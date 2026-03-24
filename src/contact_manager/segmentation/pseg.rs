@@ -61,23 +61,21 @@ impl ContactManager for PSegmentationManager {
         let mut tx_end_opt: Option<Date> = None;
 
         for seg in &self.booking {
-            // Allows to advance to the first valid segment
             if seg.end <= at_time {
                 continue;
             }
 
-            // Segment is not valid, we need to reset the building process with the next segment
             if bundle.priority <= seg.val {
                 tx_end_opt = None;
                 continue;
             }
-            // Start building or pursue ?
+
             match tx_end_opt {
-                // Try to pursue the build process
                 Some(tx_end) => {
-                    // the seg is valid, check if this is the last one to consider
                     if tx_end <= seg.end {
-                        let delay = super::get_delay(tx_end, &self.delay_intervals);
+                        let (d_start, d_end) =
+                            super::get_delays(tx_start, tx_end, &self.delay_intervals);
+
                         return Some(ContactManagerTxData {
                             tx_start,
                             tx_end,
@@ -86,34 +84,35 @@ impl ContactManager for PSegmentationManager {
                             rx_end: tx_end + d_end,
                         });
                     }
-                    // if we reach this point, the seg is valid, but transmission didn't reach terminaison, check next
                 }
-                // (re)-start the build process
                 None => {
                     tx_start = Date::max(seg.start, at_time);
-                    // In most cases, there should be a single rate seg
+
                     if let Some(tx_end) = super::get_tx_end(
                         &self.rate_intervals,
                         tx_start,
                         bundle.size,
                         contact_data.end,
                     ) {
-                    if tx_end <= seg.end{
-                        let delay = super::get_delay(tx_end,&self.delay_intervals);
-                        return Some(ContactManagerTxData{
-                            tx_start,
-                            tx_end,
-                            delay,
-                            expiration: seg.end,
-                            arrival: tx_end + delay,
+                        if tx_end <= seg.end {
+                            let (d_start, d_end) =
+                                super::get_delays(tx_start, tx_end, &self.delay_intervals);
 
-                        })
-                    }
+                            return Some(ContactManagerTxData {
+                                tx_start,
+                                tx_end,
+                                expiration: seg.end,
+                                rx_start: tx_start + d_start,
+                                rx_end: tx_end + d_end,
+                            });
+                        }
+
                         tx_end_opt = Some(tx_end);
-                    };
+                    }
                 }
             }
         }
+
         None
     }
 
@@ -224,6 +223,8 @@ impl Parser<PSegmentationManager> for PSegmentationManager {
     }
 }
 
+
+// tests for src/contact_manager/segmentation/pseg.rs
 
 #[cfg(test)]
 mod tests{
