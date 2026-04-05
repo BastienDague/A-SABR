@@ -102,7 +102,7 @@ pub fn benchmark(c: &mut Criterion) {
 
 criterion_group! {
     name=benches;
-    config=Criterion::default().sample_size(75);
+    config=Criterion::default().sample_size(80);
     targets=benchmark
 }
 criterion_main!(benches);
