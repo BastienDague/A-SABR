@@ -53,7 +53,6 @@ jobs:
   benchmark:
     name: Compare Benchmarks  
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     permissions:
       pull-requests: write
     steps:
