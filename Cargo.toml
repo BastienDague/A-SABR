@@ -29,6 +29,10 @@ criterion = "0.5"
 [lib]
 bench = false
 
+[[bin]]
+name = "a_sabr"
+bench = false
+
 [[bench]]
 name = "spsn_benchmark"
 harness = false
