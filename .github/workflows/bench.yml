@@ -2,7 +2,7 @@ name: A-SABR Benchmarks Comparaison
 
 on:
   pull_request:
-    branches: ["*"]
+    branches: ["**"]
 
 permissions:
   pull-requests: write
