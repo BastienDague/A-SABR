@@ -3,8 +3,8 @@ use a_sabr::{
     contact_plan::from_tvgutil_file::TVGUtilContactPlan, node_manager::none::NoManagement,
     routing::aliases::*, types::NodeID,
 };
-use std::hint::black_box;
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use std::hint::black_box;
 
 pub fn benchmark(c: &mut Criterion) {
     let ptvg_filepath = "benches/ptvg_files/sample1.json";

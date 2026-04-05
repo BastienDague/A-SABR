@@ -26,6 +26,9 @@ manual_queueing = []
 [dev-dependencies]
 criterion = "0.5"
 
+[lib]
+bench = false
+
 [[bench]]
 name = "spsn_benchmark"
 harness = false
