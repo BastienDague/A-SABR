@@ -49,3 +49,15 @@ jobs:
           name: code-coverage-report
           path: tarpaulin-report.html
           retention-days: 7
+
+  benchmark:
+    name: Compare Benchmarks  
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+      - uses: boa-dev/criterion-compare-action@v3
