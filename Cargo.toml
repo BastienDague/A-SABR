@@ -24,7 +24,14 @@ first_depleted = ["contact_suppression"]
 manual_queueing = []
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.5"
+
+[lib]
+bench = false
+
+[[bin]]
+name = "a_sabr"
+bench = false
 
 [[bench]]
 name = "spsn_benchmark"
