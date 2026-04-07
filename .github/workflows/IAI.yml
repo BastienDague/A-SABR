@@ -20,7 +20,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y valgrind
 
       - name: Install iai-callgrind-runner
-        run: cargo install iai-callgrind-runner
+        run: cargo install iai-callgrind-runner --version 0.14.2
 
       # 1. Bench sur la branche PR
       - name: Run PR Benchmark
