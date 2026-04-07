@@ -25,7 +25,7 @@ jobs:
       # 1. Bench sur la branche PR
       - name: Run PR Benchmark
         run: |
-          cargo bench --bench iai_router_bench --all-features > pr_bench.txt
+          cargo bench --bench bench --all-features > pr_bench.txt
           # On sauvegarde le fichier de sortie callgrind s'il existe
           cp -r target/iai/ /tmp/pr_results || true
 
@@ -34,8 +34,8 @@ jobs:
         run: |
           git checkout main
           # On s'assure que le fichier de bench existe sur main pour cette passe
-          git checkout ${{ github.event.pull_request.head.sha }} -- benches/iai_router_bench.rs
-          cargo bench --bench iai_router_bench --all-features > main_bench.txt
+          git checkout ${{ github.event.pull_request.head.sha }} -- benches/bench.rs
+          cargo bench --bench bench --all-features > main_bench.txt
 
       # 3. Génération du rapport via un script simple
       - name: Post Comment
