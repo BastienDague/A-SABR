@@ -1,5 +1,5 @@
 use std::hint::black_box;
-use iai_callgrind::{library_benchmark, library_benchmark_group, main, LibraryBenchmarkConfig};
+use iai_callgrind::{library_benchmark, library_benchmark_group, main};
 use a_sabr::{
     bundle::Bundle, 
     contact_manager::segmentation::seg::SegmentationManager,
@@ -10,7 +10,8 @@ use a_sabr::{
 };
 
 // --- 1. FONCTION DE SETUP (HORS MESURE) ---
-// Chargement du plan de contact et build du router
+// iai-callgrind appelle cette fonction AVANT de déclencher Callgrind.
+// Les 18 millions d'instructions du parsing JSON s'arrêtent ici.
 fn setup_router_env(router_type: &str) -> Box<dyn Router<NoManagement, SegmentationManager>> {
     let ptvg_filepath = "benches/ptvg_files/sample1.json";
     
@@ -30,18 +31,17 @@ fn setup_router_env(router_type: &str) -> Box<dyn Router<NoManagement, Segmentat
     ).expect("Failed to build router")
 }
 
-// --- 2. LE BENCHMARK ---
+// --- 2. LE BENCHMARK (LA ZONE MESURÉE) ---
 #[library_benchmark]
-// Définition des variantes (arguments passés à la fonction)
+// Chaque ligne ci-dessous définit un cas de test indépendant.
+// iai-callgrind : 1. Exécute setup() -> 2. Allume Callgrind -> 3. Exécute run_routing()
 #[bench::spsn_hybrid(setup_router_env("SpsnHybridParenting"))]
 #[bench::spsn_node(setup_router_env("SpsnNodeParenting"))]
-// On utilise cfg_attr pour ne pas casser la compil si les features sont OFF
 #[cfg_attr(feature = "contact_work_area", bench::contact_parenting(setup_router_env("SpsnContactParenting")))]
 #[cfg_attr(feature = "first_depleted", bench::depleted_hybrid(setup_router_env("CgrFirstDepletedHybridParenting")))]
 
 fn run_routing(router: Box<dyn Router<NoManagement, SegmentationManager>>) {
-    // On rend le router mutable et on le passe dans un black_box 
-    // pour empêcher le compilateur d'ignorer l'objet.
+    // Force le compilateur à considérer l'objet router comme "utilisé" et inconnu.
     let mut router = black_box(router);
 
     let source: NodeID = 178;
@@ -55,7 +55,7 @@ fn run_routing(router: Box<dyn Router<NoManagement, SegmentationManager>>) {
     let curr_time = 60.0;
     let excluded_nodes: Vec<NodeID> = vec![];
 
-    // L'appel au routing doit être entouré de black_box
+    // L'exécution de l'algorithme proprement dit.
     let result = router.route(
         black_box(source),
         black_box(&bundle),
@@ -63,21 +63,17 @@ fn run_routing(router: Box<dyn Router<NoManagement, SegmentationManager>>) {
         black_box(&excluded_nodes),
     );
 
-    // On consomme explicitement le résultat
+    // Empêche l'optimisation (élimination) de l'appel à .route()
     black_box(result);
 }
 
-// --- 3. CONFIGURATION DU GROUPE ---
+// --- 3. GROUPE DE BENCHMARKS ---
 library_benchmark_group!(
     name = routing_group;
     benchmarks = run_routing
 );
 
-// --- 4. POINT D'ENTRÉE ---
-main!(
-    config = LibraryBenchmarkConfig::default()
-        // On demande explicitement de collecter tout ce qui se passe 
-        // dans la fonction run_routing.
-        .valgrind_args(["--collect-atstart=yes"]);
-    library_benchmark_groups = routing_group
-);
+// --- 4. POINT D'ENTRÉE (CONFIG PAR DÉFAUT) ---
+// IMPORTANT : On ne met plus de valgrind_args(["--collect-atstart=yes"])
+// car cela forcerait la mesure du setup (le parsing JSON).
+main!(library_benchmark_groups = routing_group);
