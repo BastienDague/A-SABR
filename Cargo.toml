@@ -25,9 +25,10 @@ manual_queueing = []
 
 [dev-dependencies]
 criterion = "0.3"
+iai-callgrind = { version = "0.14", features = ["client_requests"] }
 
 [[bench]]
-name = "spsn_benchmark"
+name = "bench"
 harness = false
 
 [[example]]
