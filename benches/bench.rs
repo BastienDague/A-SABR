@@ -36,6 +36,7 @@ macro_rules! bench_router {
     ($fn_name:ident, $type_str:expr) => {
         #[library_benchmark]
         fn $fn_name() {
+            // --- TOUT CE QUI EST ICI EST HORS MESURE (Grâce au toggle) ---
             let mut router = setup_router($type_str);
             let source = 178;
             let bundle = Bundle { 
@@ -45,21 +46,17 @@ macro_rules! bench_router {
             let curr_time = 60.0;
             let excluded_nodes: Vec<NodeID> = vec![];
 
-            // On utilise explicitement le start/stop de iai-callgrind
-            // C'est le plus fiable si configuré avec entry_point
-            iai_callgrind::client_requests::callgrind::start_instrumentation();
-            
-            let res = black_box(router.route(
-                black_box(source),
-                black_box(&bundle),
-                black_box(curr_time),
-                black_box(&excluded_nodes),
+            // --- C'EST CET APPEL QU'ON VEUT MESURER ---
+            // On l'entoure de black_box pour éviter que le compilateur ne l'efface
+            let res = std::hint::black_box(router.route(
+                std::hint::black_box(source),
+                std::hint::black_box(&bundle),
+                std::hint::black_box(curr_time),
+                std::hint::black_box(&excluded_nodes),
             ));
-            
-            iai_callgrind::client_requests::callgrind::stop_instrumentation();
-            
-            // Sécurité pour vérifier que le router a bien travaillé
-            black_box(res);
+
+            // On s'assure que le résultat est utilisé
+            std::hint::black_box(res);
         }
     };
 }
@@ -87,12 +84,13 @@ library_benchmark_group!(
         bench_contact_parenting,
         bench_depleted_hybrid
 );
-
 main!(
     config = iai_callgrind::LibraryBenchmarkConfig::default()
-        // On supprime les valgrind_args manuels pour laisser iai gérer
-        // le toggle via ses propres mécanismes internes
-        .valgrind_args(["--collect-atstart=no"]) 
-        .entry_point(iai_callgrind::EntryPoint::Benchmarks); 
+        .valgrind_args([
+            "--collect-atstart=no",
+            // Valgrind va s'allumer dès qu'il voit une fonction 
+            // dont le nom contient "bench_" (tes macros)
+            "--toggle-collect=*bench_*" 
+        ]);
     library_benchmark_groups = routing_group
 );
