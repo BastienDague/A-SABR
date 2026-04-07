@@ -1,0 +1,83 @@
+name: Performance Regression Check
+
+on:
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Valgrind
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: Install iai-callgrind-runner
+        run: cargo install iai-callgrind-runner --version 0.16.1
+
+      # 1. Bench sur la branche PR
+      - name: Run PR Benchmark
+        run: |
+          cargo bench --bench bench --all-features > pr_bench.txt
+          # On sauvegarde le fichier de sortie callgrind s'il existe
+          cp -r target/iai/ /tmp/pr_results || true
+
+# 2. Bench sur la branche TARGET (Reference)
+      - name: Run Main Benchmark
+        run: |
+          # On sauvegarde le bench actuel
+          cp benches/bench.rs /tmp/bench.rs
+          cp Cargo.toml /tmp/Cargo.toml
+          
+          # On bascule sur la branche cible (main ou autre)
+          git checkout ${{ github.event.pull_request.base.ref }}
+          
+          # On restaure les fichiers de bench de la PR pour que ça compile
+          cp /tmp/bench.rs benches/bench.rs
+          cp /tmp/Cargo.toml Cargo.toml
+          
+          # On lance le bench. Si ça échoue, on crée un fichier vide pour éviter le crash du script
+          cargo bench --bench bench --all-features > main_bench.txt || echo "Bench de référence échoué ou non disponible" > main_bench.txt
+
+      # 3. Rapport final
+      - name: Post Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Fonction pour lire un fichier sans crasher si il manque
+            const readFileSafe = (path) => {
+              return fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : "Fichier non trouvé.";
+            };
+
+            const prBench = readFileSafe('pr_bench.txt');
+            const mainBench = readFileSafe('main_bench.txt');
+            
+            const body = `
+            ### 📊 Benchmark Report (Instruction Counts)
+            
+            **Branche de la PR :**
+            \`\`\`
+            ${prBench}
+            \`\`\`
+            
+            **Branche de Référence (${context.payload.pull_request.base.ref}) :**
+            \`\`\`
+            ${mainBench}
+            \`\`\`
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            })

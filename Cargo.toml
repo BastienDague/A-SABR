@@ -25,7 +25,7 @@ manual_queueing = []
 
 [dev-dependencies]
 criterion = "0.3"
-iai-callgrind = { version = "0.14", features = ["client_requests"] }
+iai-callgrind = { version = "0.16.1", features = ["client_requests"] }
 
 [[bench]]
 name = "bench"
