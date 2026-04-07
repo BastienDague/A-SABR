@@ -1,7 +1,9 @@
 use iai_callgrind::{
-    library_benchmark, library_benchmark_group, main, black_box, 
+    library_benchmark, library_benchmark_group, main, 
     client_requests::callgrind
 };
+// On utilise le black_box standard de Rust (disponible depuis Rust 1.66)
+use std::hint::black_box;
 use a_sabr::{
     bundle::Bundle, contact_manager::segmentation::seg::SegmentationManager,
     contact_plan::from_tvgutil_file::TVGUtilContactPlan, node_manager::none::NoManagement,
@@ -85,8 +87,7 @@ library_benchmark_group!(
 
 main!(
     config = iai_callgrind::LibraryBenchmarkConfig::default()
-        .callgrind_args([
-            // On garde uniquement le toggle car collect-atstart=no est déjà par défaut
+        .valgrind_args([ // <--- C'était ça le changement
             "toggle-collect=*callgrind*start_instrumentation*"
         ]);
     library_benchmark_groups = routing_group
