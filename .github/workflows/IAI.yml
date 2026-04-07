@@ -5,46 +5,66 @@ on:
     branches: ["**"]
 
 permissions:
-  pull-requests: write # Nécessaire pour poster le rapport en commentaire
+  pull-requests: write
 
 jobs:
   benchmark:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR branch
+      - name: Checkout PR
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Récupère tout l'historique pour switcher entre branches
+          fetch-depth: 0
 
       - name: Install Valgrind
         run: sudo apt-get update && sudo apt-get install -y valgrind
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Install iai-callgrind-runner
         run: cargo install iai-callgrind-runner
 
-      # --- ÉTAPE 1 : BENCH DU MAIN (RÉFÉRENCE) ---
-      - name: Benchmark Main Branch
+      # 1. Bench sur la branche PR
+      - name: Run PR Benchmark
+        run: |
+          cargo bench --bench iai_router_bench --all-features > pr_bench.txt
+          # On sauvegarde le fichier de sortie callgrind s'il existe
+          cp -r target/iai/ /tmp/pr_results || true
+
+      # 2. Bench sur la branche MAIN
+      - name: Run Main Benchmark
         run: |
           git checkout main
-          cargo bench --bench iai_router_bench --all-features
-          # On déplace les résultats pour ne pas qu'ils soient écrasés
-          mkdir -p target/iai-reference
-          cp -r target/iai/iai_router_bench target/iai-reference/
+          # On s'assure que le fichier de bench existe sur main pour cette passe
+          git checkout ${{ github.event.pull_request.head.sha }} -- benches/iai_router_bench.rs
+          cargo bench --bench iai_router_bench --all-features > main_bench.txt
 
-      # --- ÉTAPE 2 : BENCH DE LA PR ---
-      - name: Benchmark PR Branch
-        run: |
-          git checkout ${{ github.event.pull_request.head.sha }}
-          cargo bench --bench iai_router_bench --all-features
-
-      # --- ÉTAPE 3 : GÉNÉRATION DU RAPPORT ---
-      - name: Compare and Post Report
-        uses: io-monad/iai-callgrind-action@v0.5.0
+      # 3. Génération du rapport via un script simple
+      - name: Post Comment
+        uses: actions/github-script@v7
         with:
-          # L'action va chercher les fichiers de sortie de callgrind
-          # et formater un tableau Markdown automatiquement
-          compare: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const prBench = fs.readFileSync('pr_bench.txt', 'utf8');
+            const mainBench = fs.readFileSync('main_bench.txt', 'utf8');
+            
+            const body = `
+            ### 📊 Benchmark Report (Instruction Counts)
+            
+            **Current PR:**
+            \`\`\`
+            ${prBench}
+            \`\`\`
+            
+            **Main Branch (Reference):**
+            \`\`\`
+            ${mainBench}
+            \`\`\`
+            
+            *Note: Measurements are done via Valgrind/Callgrind for deterministic results.*
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            })
