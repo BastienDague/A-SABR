@@ -35,21 +35,26 @@ fn setup_router(router_type: &str) -> Box<dyn Router<NoManagement, SegmentationM
 macro_rules! bench_router {
     ($fn_name:ident, $type_str:expr) => {
         #[library_benchmark]
+        // On demande à iai-callgrind de ne mesurer QUE cette fonction
         fn $fn_name() {
+            // SETUP (HORS MESURE)
             let mut router = setup_router($type_str);
-            let (source, bundle, curr_time, excluded_nodes) = get_mock_data();
+            let source = 178;
+            let bundle = Bundle { 
+                source: 178, destinations: vec![159], priority: 0,
+                size: 47419533.0, expiration: 24060.0,
+            };
+            let curr_time = 60.0;
+            let excluded_nodes: Vec<NodeID> = vec![];
 
-            // Utilise les macros natives de iai-callgrind pour le toggle
-            iai_callgrind::client_requests::callgrind::start_instrumentation();
-            
+            // ON ISOLE L'APPEL DANS UNE FONCTION SÉPARÉE
+            // OU ON UTILISE LE BLACK_BOX
             let _ = black_box(router.route(
                 black_box(source),
                 black_box(&bundle),
                 black_box(curr_time),
                 black_box(&excluded_nodes),
             ));
-
-            iai_callgrind::client_requests::callgrind::stop_instrumentation();
         }
     };
 }
@@ -82,8 +87,8 @@ main!(
     config = iai_callgrind::LibraryBenchmarkConfig::default()
         .valgrind_args([
             "--collect-atstart=no",
-            // On déclenche la mesure sur TOUT appel à start_instrumentation
-            "--toggle-collect=*start_instrumentation*" 
+            // On mesure dès qu'on entre dans une fonction du routing_group
+            "--toggle-collect=*routing_group*" 
         ]);
     library_benchmark_groups = routing_group
 );
