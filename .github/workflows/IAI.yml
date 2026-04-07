@@ -1,0 +1,50 @@
+name: Performance Regression Check
+
+on:
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  pull-requests: write # Nécessaire pour poster le rapport en commentaire
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Récupère tout l'historique pour switcher entre branches
+
+      - name: Install Valgrind
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install iai-callgrind-runner
+        run: cargo install iai-callgrind-runner
+
+      # --- ÉTAPE 1 : BENCH DU MAIN (RÉFÉRENCE) ---
+      - name: Benchmark Main Branch
+        run: |
+          git checkout main
+          cargo bench --bench iai_router_bench --all-features
+          # On déplace les résultats pour ne pas qu'ils soient écrasés
+          mkdir -p target/iai-reference
+          cp -r target/iai/iai_router_bench target/iai-reference/
+
+      # --- ÉTAPE 2 : BENCH DE LA PR ---
+      - name: Benchmark PR Branch
+        run: |
+          git checkout ${{ github.event.pull_request.head.sha }}
+          cargo bench --bench iai_router_bench --all-features
+
+      # --- ÉTAPE 3 : GÉNÉRATION DU RAPPORT ---
+      - name: Compare and Post Report
+        uses: io-monad/iai-callgrind-action@v0.5.0
+        with:
+          # L'action va chercher les fichiers de sortie de callgrind
+          # et formater un tableau Markdown automatiquement
+          compare: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
