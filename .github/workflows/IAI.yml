@@ -29,13 +29,19 @@ jobs:
           # On sauvegarde le fichier de sortie callgrind s'il existe
           cp -r target/iai/ /tmp/pr_results || true
 
-      # 2. Bench sur la branche MAIN
-      - name: Run Main Benchmark
+# 2. Bench sur la branche CIBLE (ex: main ou develop)
+      - name: Run Target Branch Benchmark
         run: |
-          git checkout main
-          # On s'assure que le fichier de bench existe sur main pour cette passe
+          # On bascule sur la branche cible de la PR (ex: main)
+          git checkout ${{ github.event.pull_request.base.ref }}
+          
+          # On "emprunte" la configuration de bench de la PR
+          git checkout ${{ github.event.pull_request.head.sha }} -- Cargo.toml
           git checkout ${{ github.event.pull_request.head.sha }} -- benches/bench.rs
-          cargo bench --bench bench --all-features > main_bench.txt
+          
+          # On lance le bench sur le code de la branche cible
+          # mais avec les outils de la PR
+          cargo bench --bench bench --all-features > target_bench.txt
 
       # 3. Génération du rapport via un script simple
       - name: Post Comment
