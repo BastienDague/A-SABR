@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::bundle::Bundle;
 use crate::contact::Contact;
 use crate::contact::ContactInfo;
@@ -265,4 +267,20 @@ pub(crate) fn make_hop_context(size: f64) -> HopContext<NoManagement> {
         tx,
         rx,
     }
+}
+
+pub(crate) fn make_tiny_cp() -> ContactPlan<NoManagement, NoManagement, EVLManager> {
+    ContactPlan::new(
+        vec![
+            make_node(0, "A", NoManagement {}),
+            make_node(1, "B", NoManagement {}),
+            make_node(2, "C", NoManagement {}),
+        ],
+        vec![
+            make_contact::<NoManagement>(0, 1, 0.0, 2000.0, 100.0, 1.0),
+            make_contact::<NoManagement>(1, 2, 0.0, 2000.0, 100.0, 1.0),
+        ],
+        None,
+    )
+    .expect("Failed to create ContactPlan")
 }

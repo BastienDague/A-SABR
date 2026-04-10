@@ -116,3 +116,58 @@ impl<S: RouteStorage<NM, CM>, NM: NodeManager, CM: ContactManager, P: Pathfindin
         Ok(None)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::contact_manager::legacy::evl::EVLManager;
+    use crate::distance::sabr::SABR;
+    use crate::node_manager::none::NoManagement;
+    use crate::pathfinding::hybrid_parenting::HybridParentingPath;
+    use crate::pathfinding::test_helpers::*;
+    use crate::route_storage::table::RoutingTable;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[test]
+    fn test_volcgr_start() -> Result<(), ASABRError> {
+        let cp = make_tiny_cp();
+        let storage = Rc::new(RefCell::new(
+            RoutingTable::<NoManagement, EVLManager, SABR>::new(),
+        ));
+        let mut router = VolCgr::<
+            NoManagement,
+            EVLManager,
+            HybridParentingPath<NoManagement, EVLManager, SABR>,
+            RoutingTable<NoManagement, EVLManager, SABR>,
+        >::new(cp, storage.clone())?;
+
+        // First routage
+        let bundle = make_bundle(2, 1, 10.0, 1000.0); // Vers noeud 2
+        let output1 = router
+            .route(0, &bundle, 0.0, &[])?
+            .expect("First routing should succeed");
+
+        {
+            let table_borrow = RefCell::borrow(&*storage);
+            assert!(
+                table_borrow.has_route_to(2),
+                "Route should be stored for node 2"
+            );
+        }
+        //Free RefCell::borrow
+
+        // Second routage
+        let output2 = router
+            .route(0, &bundle, 0.0, &[])?
+            .expect("Second routing should succeed via cache");
+
+        assert_eq!(output1.first_hops.len(), output2.first_hops.len());
+        {
+            let table = storage.borrow();
+            assert_eq!(table.route_count_for(2), 1, "Duplicate detected in cache");
+        }
+        //Free RefCell::borrow
+        Ok(())
+    }
+}

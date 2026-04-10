@@ -18,7 +18,7 @@ pub mod hybrid_parenting;
 pub mod limiting_contact;
 pub mod node_parenting;
 #[cfg(test)]
-mod test_helpers;
+pub mod test_helpers;
 
 /// Data structure that holds the results of a pathfinding operation.
 ///
