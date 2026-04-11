@@ -53,14 +53,6 @@ impl<NM: NodeManager, CM: ContactManager, D: Distance<NM, CM>> RoutingTable<NM, 
             _phantom_distance: PhantomData,
         }
     }
-    //Checks if the table contains at least one route for this destination for tests.
-    pub fn has_route_to(&self, dest: NodeID) -> bool {
-        self.tables
-            .get(dest as usize)
-            .map(|v| !v.is_empty())
-            .unwrap_or(false)
-    }
-
     /// Returns the number of routes stored for a given destination for tests.
     pub fn route_count_for(&self, dest: NodeID) -> usize {
         self.tables.get(dest as usize).map(|v| v.len()).unwrap_or(0)
