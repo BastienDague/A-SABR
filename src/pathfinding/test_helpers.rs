@@ -278,6 +278,7 @@ pub(crate) fn make_hop_context(size: f64) -> HopContext<NoManagement> {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 /// Creates a graph with vnodes for testing anycast routing.
 ///
 /// Topology (real nodes):
@@ -323,15 +324,23 @@ pub(crate) fn vnode_anycast_graph()
     )?)?)))
 =======
 pub(crate) fn make_tiny_cp() -> ContactPlan<NoManagement, NoManagement, EVLManager> {
+=======
+pub(crate) fn make_cp() -> ContactPlan<NoManagement, NoManagement, EVLManager> {
+>>>>>>> 641c727 (Add new tests)
     ContactPlan::new(
         vec![
-            make_node(0, "A", NoManagement {}),
-            make_node(1, "B", NoManagement {}),
-            make_node(2, "C", NoManagement {}),
+            make_node(0, "source", NoManagement {}),
+            make_node(1, "from_C0", NoManagement {}),
+            make_node(2, "from_C2_C1", NoManagement {}),
+            make_node(3, "from_C3", NoManagement {}),
+            make_node(4, "from_C4", NoManagement {}),
         ],
         vec![
-            make_contact::<NoManagement>(0, 1, 0.0, 2000.0, 100.0, 1.0),
-            make_contact::<NoManagement>(1, 2, 0.0, 2000.0, 100.0, 1.0),
+            make_contact::<NoManagement>(0, 1, 0.0, 10.0, 1.0, 0.0),
+            make_contact::<NoManagement>(0, 2, 25.0, 35.0, 1.0, 0.0),
+            make_contact::<NoManagement>(1, 2, 10.0, 20.0, 1.0, 0.0),
+            make_contact::<NoManagement>(2, 3, 20.0, 40.0, 1.0, 0.0),
+            make_contact::<NoManagement>(3, 4, 50.0, 60.0, 1.0, 0.0),
         ],
         None,
     )
