@@ -123,7 +123,7 @@ mod tests {
     use crate::contact_manager::legacy::evl::EVLManager;
     use crate::distance::sabr::SABR;
     use crate::node_manager::none::NoManagement;
-    use crate::pathfinding::hybrid_parenting::HybridParentingPath;
+    use crate::pathfinding::hybrid_parenting::{HybridParentingPath, HybridParentingPathExcl};
     use crate::pathfinding::test_helpers::*;
     use crate::route_storage::table::RoutingTable;
     use std::cell::RefCell;
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn test_volcgr_start() -> Result<(), ASABRError> {
-        let cp = make_tiny_cp();
+        let cp = make_cp();
         let storage = Rc::new(RefCell::new(
             RoutingTable::<NoManagement, EVLManager, SABR>::new(),
         ));
@@ -143,13 +143,13 @@ mod tests {
         >::new(cp, storage.clone())?;
 
         // First routage
-        let bundle = make_bundle(2, 1, 10.0, 1000.0); // Vers noeud 2
+        let bundle = make_bundle(2, 1, 1.0, 1000.0);
         let output1 = router
             .route(0, &bundle, 0.0, &[])?
             .expect("First routing should succeed");
 
         {
-            let table_borrow = RefCell::borrow(&*storage);
+            let table_borrow = storage.borrow();
             assert!(
                 table_borrow.has_route_to(2),
                 "Route should be stored for node 2"
@@ -160,7 +160,7 @@ mod tests {
         // Second routage
         let output2 = router
             .route(0, &bundle, 0.0, &[])?
-            .expect("Second routing should succeed via cache");
+            .expect("Second routing should succeed (from cache)");
 
         assert_eq!(output1.first_hops.len(), output2.first_hops.len());
         {
@@ -168,6 +168,114 @@ mod tests {
             assert_eq!(table.route_count_for(2), 1, "Duplicate detected in cache");
         }
         //Free RefCell::borrow
+        Ok(())
+    }
+
+    #[test]
+    fn test_volcgr_consummed() -> Result<(), ASABRError> {
+        let cp = make_cp();
+        let storage = Rc::new(RefCell::new(
+            RoutingTable::<NoManagement, EVLManager, SABR>::new(),
+        ));
+        let mut router = VolCgr::<
+            NoManagement,
+            EVLManager,
+            HybridParentingPath<NoManagement, EVLManager, SABR>,
+            RoutingTable<NoManagement, EVLManager, SABR>,
+        >::new(cp, storage.clone())?;
+
+        // First routage
+        let bundle = make_bundle(2, 1, 10.0, 1000.0);
+        let output1 = router
+            .route(0, &bundle, 0.0, &[])?
+            .expect("First routing should succeed");
+
+        {
+            let table_borrow = storage.borrow();
+            assert!(
+                table_borrow.has_route_to(2),
+                "Route should be stored for node 2"
+            );
+        }
+        //Free RefCell::borrow
+
+        // Second routage
+        let output2 = router
+            .route(0, &bundle, 0.0, &[])?
+            .expect("Second routing should succeed");
+
+        let hop1 = output1
+            .lazy_get_for_unicast(2)
+            .expect("Should have route to 2");
+        let hop2 = output2
+            .lazy_get_for_unicast(2)
+            .expect("Should have route to 2");
+
+        assert_eq!(
+            hop1.1.borrow().hop_count,
+            2,
+            "First route should be 2 hops (0->1->2)"
+        );
+        assert_eq!(
+            hop2.1.borrow().hop_count,
+            1,
+            "Second route should be 1 hop (0->2 direct)"
+        );
+        {
+            let table = storage.borrow();
+            assert_eq!(
+                table.route_count_for(2),
+                2,
+                "New Road created : contact 1 is depleted"
+            );
+        }
+        //Free RefCell::borrow
+        Ok(())
+    }
+
+    #[test]
+    fn test_volcgr_excluded() -> Result<(), ASABRError> {
+        let cp = make_cp();
+        let storage = Rc::new(RefCell::new(
+            RoutingTable::<NoManagement, EVLManager, SABR>::new(),
+        ));
+        let mut router = VolCgr::<
+            NoManagement,
+            EVLManager,
+            HybridParentingPathExcl<NoManagement, EVLManager, SABR>,
+            RoutingTable<NoManagement, EVLManager, SABR>,
+        >::new(cp, storage.clone())?;
+
+        let bundle = make_bundle(2, 1, 1.0, 1000.0);
+
+        let output1 = router
+            .route(0, &bundle, 0.0, &[])?
+            .expect("First routing should succeed");
+        assert_eq!(
+            output1
+                .lazy_get_for_unicast(2)
+                .unwrap()
+                .1
+                .borrow()
+                .hop_count,
+            2,
+            "First route should be 2 hops (0->1->2)"
+        );
+
+        let output2 = router
+            .route(0, &bundle, 0.0, &[1])?
+            .expect("Second routing should succeed via alternate path");
+        assert_eq!(
+            output2
+                .lazy_get_for_unicast(2)
+                .unwrap()
+                .1
+                .borrow()
+                .hop_count,
+            1,
+            "Second route should be 1 hop (0->2 direct) since node 1 is excluded"
+        );
+
         Ok(())
     }
 }
