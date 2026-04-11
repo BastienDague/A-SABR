@@ -148,15 +148,10 @@ mod tests {
             .route(0, &bundle, 0.0, &[])?
             .expect("First routing should succeed");
 
-        {
-            let table_borrow = storage.borrow();
-            assert!(
-                table_borrow.has_route_to(2),
-                "Route should be stored for node 2"
-            );
-        }
-        //Free RefCell::borrow
-
+        assert!(
+            output1.lazy_get_for_unicast(2).is_some(),
+            "Output should contain a route to node 2"
+        );
         // Second routage
         let output2 = router
             .route(0, &bundle, 0.0, &[])?
@@ -190,14 +185,10 @@ mod tests {
             .route(0, &bundle, 0.0, &[])?
             .expect("First routing should succeed");
 
-        {
-            let table_borrow = storage.borrow();
-            assert!(
-                table_borrow.has_route_to(2),
-                "Route should be stored for node 2"
-            );
-        }
-        //Free RefCell::borrow
+        assert!(
+            output1.lazy_get_for_unicast(2).is_some(),
+            "Output should contain a route to node 2"
+        );
 
         // Second routage
         let output2 = router
@@ -275,6 +266,37 @@ mod tests {
             1,
             "Second route should be 1 hop (0->2 direct) since node 1 is excluded"
         );
+
+        Ok(())
+    }
+    #[test]
+    fn test_volcgr_edge_cases() -> Result<(), ASABRError> {
+        let cp = make_cp();
+        let storage = Rc::new(RefCell::new(
+            RoutingTable::<NoManagement, EVLManager, SABR>::new(),
+        ));
+        let mut router = VolCgr::<
+            NoManagement,
+            EVLManager,
+            HybridParentingPath<NoManagement, EVLManager, SABR>,
+            RoutingTable<NoManagement, EVLManager, SABR>,
+        >::new(cp, storage.clone())?;
+
+        let expired_bundle = make_bundle(2, 1, 1.0, 10.0);
+        let res_expired = router.route(0, &expired_bundle, 20.0, &[])?;
+        assert!(res_expired.is_none(), "Expired bundle");
+
+        let mut multi_bundle = make_bundle(2, 1, 1.0, 1000.0);
+        multi_bundle.destinations.push(3);
+        let res_multi = router.route(0, &multi_bundle, 0.0, &[]);
+        assert!(matches!(
+            res_multi,
+            Err(ASABRError::MulticastUnsupportedError)
+        ));
+
+        let unreachable_bundle = make_bundle(99, 1, 1.0, 1000.0);
+        let res_unreachable = router.route(0, &unreachable_bundle, 0.0, &[])?;
+        assert!(res_unreachable.is_none(), "Unreachable destination");
 
         Ok(())
     }
