@@ -209,3 +209,331 @@ impl<S: TreeStorage<NM, CM>, NM: NodeManager, CM: ContactManager, P: Pathfinding
         Ok(Some(schedule_multicast(bundle, curr_time, tree, None)?))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::contact_manager::legacy::evl::EVLManager;
+    use crate::distance::hop::Hop;
+    use crate::errors::ASABRError;
+    use crate::node_manager::none::NoManagement;
+    use crate::pathfinding::node_parenting::NodeParentingTreeExcl;
+    use crate::pathfinding::test_helpers::*;
+    use crate::route_storage::cache::TreeCache;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    fn make_cache(max: usize) -> Rc<RefCell<TreeCache<NoManagement, EVLManager>>> {
+        Rc::new(RefCell::new(TreeCache::new(false, false, max)))
+    }
+
+    fn make_spsn(
+        with_priorities: bool,
+    ) -> Spsn<
+        NoManagement,
+        EVLManager,
+        NodeParentingTreeExcl<NoManagement, EVLManager, Hop>,
+        TreeCache<NoManagement, EVLManager>,
+    > {
+        Spsn::<
+            NoManagement,
+            EVLManager,
+            NodeParentingTreeExcl<NoManagement, EVLManager, Hop>,
+            TreeCache<NoManagement, EVLManager>,
+        >::new(make_cp(), make_cache(10), with_priorities)
+        .unwrap()
+    }
+
+    #[test]
+    fn test_new_valid() -> Result<(), ASABRError> {
+        let cache = make_cache(10);
+        let result = Spsn::<
+            NoManagement,
+            EVLManager,
+            NodeParentingTreeExcl<NoManagement, EVLManager, Hop>,
+            TreeCache<NoManagement, EVLManager>,
+        >::new(make_cp(), cache, false);
+
+        assert!(
+            result.is_ok(),
+            "TEST FAILED: Spsn::new() should succeed with a valid contact plan."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_route_expired_bundle() -> Result<(), ASABRError> {
+        let mut spsn = make_spsn(false);
+        let bundle = make_bundle(2, 1, 1.0, 10.0);
+        let result = spsn.route(0, &bundle, 20.0, &[])?;
+
+        assert!(
+            result.is_none(),
+            "TEST FAILED: Expired bundle should return None."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_route_unicast_unreachable_dest() -> Result<(), ASABRError> {
+        let mut spsn = make_spsn(false);
+        let bundle = make_bundle(4, 1, 5.0, 1000.0);
+        let result = spsn.route(0, &bundle, 0.0, &[1, 2, 3])?;
+
+        assert!(
+            result.is_none(),
+            "TEST FAILED: Unreachable destination should return None."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_route_unicast_guard_aborts() -> Result<(), ASABRError> {
+        let mut spsn = make_spsn(false);
+        let bundle_large = make_bundle(4, 1, 5.0, 1000.0);
+        spsn.route(0, &bundle_large, 0.0, &[1, 2, 3])?;
+        let bundle_small = make_bundle(4, 1, 1.0, 1000.0);
+        let result = spsn.route(0, &bundle_small, 0.0, &[])?;
+
+        assert!(
+            result.is_none(),
+            "TEST FAILED: Guard should abort routing for a bundle smaller than the known limit."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_route_unicast_cache_hit() -> Result<(), ASABRError> {
+        let mut spsn = make_spsn(false);
+        let bundle = make_bundle(2, 1, 1.0, 1000.0);
+        let result1 = spsn.route(0, &bundle, 0.0, &[])?;
+
+        assert!(
+            result1.is_some(),
+            "TEST FAILED: First routing should succeed."
+        );
+
+        let result2 = spsn.route(0, &bundle, 0.0, &[])?;
+
+        assert!(
+            result2.is_some(),
+            "TEST FAILED: Second routing should succeed via cache."
+        );
+        assert!(
+            result1.unwrap().lazy_get_for_unicast(2).is_some(),
+            "TEST FAILED: First route should reach node 2."
+        );
+        assert!(
+            result2.unwrap().lazy_get_for_unicast(2).is_some(),
+            "TEST FAILED: Second route should reach node 2."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_route_unicast_path_found_but_expired() -> Result<(), ASABRError> {
+        let mut spsn = make_spsn(false);
+        let bundle = make_bundle(2, 1, 1.0, 5.0);
+        let result = spsn.route(0, &bundle, 0.0, &[])?;
+
+        assert!(
+            result.is_none(),
+            "TEST FAILED: Bundle expiring before arrival should return None."
+        );
+
+        let bundle_valid = make_bundle(2, 1, 1.0, 1000.0);
+        let result_valid = spsn.route(0, &bundle_valid, 0.0, &[])?;
+
+        assert!(
+            result_valid.is_some(),
+            "TEST FAILED: Guard should not have been updated when the bundle expires before arrival."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_route_unicast_fresh_tree() -> Result<(), ASABRError> {
+        let mut spsn = make_spsn(false);
+        let bundle = make_bundle(2, 1, 1.0, 1000.0);
+        let result = spsn.route(0, &bundle, 0.0, &[])?;
+
+        assert!(
+            result.is_some(),
+            "TEST FAILED: Fresh tree routing should return Some for a reachable destination."
+        );
+
+        let (_contact, dest_stage) = result
+            .unwrap()
+            .lazy_get_for_unicast(2)
+            .expect("TEST FAILED: RoutingOutput should contain a route to node 2.");
+
+        assert_eq!(
+            dest_stage.borrow().to_node,
+            2,
+            "TEST FAILED: Destination stage should point to node 2."
+        );
+        assert_eq!(
+            dest_stage.borrow().hop_count,
+            1,
+            "TEST FAILED: Hop distance selects direct path 0 -> 2, should only be 1 hop."
+        );
+        assert_eq!(
+            dest_stage.borrow().at_time,
+            26.0,
+            "TEST FAILED: Direct path 0 -> 2, arrival should be 26.0."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_route_multicast_cache_miss() -> Result<(), ASABRError> {
+        let mut spsn = make_spsn(false);
+        let bundle = make_multicast_bundle(vec![2, 4], 1, 1.0, 1000.0);
+        let result = spsn.route(0, &bundle, 0.0, &[])?;
+
+        assert!(
+            result.is_some(),
+            "TEST FAILED: Multicast should succeed for reachable destinations."
+        );
+        assert!(
+            !result.unwrap().first_hops.is_empty(),
+            "TEST FAILED: RoutingOutput should contain at least one first hop."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_route_multicast_cache_hit_full() -> Result<(), ASABRError> {
+        let mut spsn = make_spsn(false);
+        let bundle = make_multicast_bundle(vec![2, 4], 1, 1.0, 1000.0);
+        let result1 = spsn.route(0, &bundle, 0.0, &[])?;
+
+        assert!(
+            result1.is_some(),
+            "TEST FAILED: First multicast should succeed."
+        );
+        let result2 = spsn.route(0, &bundle, 0.0, &[])?;
+        assert!(
+            result2.is_some(),
+            "TEST FAILED: Second multicast should succeed via full cache hit."
+        );
+        assert!(
+            !result2.unwrap().first_hops.is_empty(),
+            "TEST FAILED: RoutingOutput from cache should contain first hops."
+        );
+        Ok(())
+    }
+
+    fn make_cp_partial_window() -> ContactPlan<NoManagement, NoManagement, EVLManager> {
+        ContactPlan::new(
+            vec![
+                make_node(0, "source", NoManagement {}),
+                make_node(1, "relay", NoManagement {}),
+                make_node(2, "dest_a", NoManagement {}),
+                make_node(3, "relay2", NoManagement {}),
+                make_node(4, "dest_b", NoManagement {}),
+            ],
+            vec![
+                make_contact::<NoManagement>(0, 2, 0.0, 2000.0, 100.0, 0.0),
+                make_contact::<NoManagement>(0, 1, 0.0, 2000.0, 100.0, 0.0),
+                make_contact::<NoManagement>(1, 3, 0.0, 2000.0, 100.0, 0.0),
+                make_contact::<NoManagement>(3, 4, 0.0, 5.0, 100.0, 0.0),
+            ],
+            None,
+        )
+        .expect("TEST SETUP FAILED: Failed to create M3 ContactPlan.")
+    }
+
+    #[test]
+    fn test_route_multicast_cache_hit_partial() -> Result<(), ASABRError> {
+        let cache = Rc::new(RefCell::new(TreeCache::new(false, false, 10)));
+        let mut spsn = Spsn::<
+            NoManagement,
+            EVLManager,
+            NodeParentingTreeExcl<NoManagement, EVLManager, Hop>,
+            TreeCache<NoManagement, EVLManager>,
+        >::new(make_cp_partial_window(), cache, false)?;
+
+        let bundle = make_multicast_bundle(vec![2, 4], 1, 1.0, 1000.0);
+        let result1 = spsn.route(0, &bundle, 0.0, &[])?;
+
+        assert!(
+            result1.is_some(),
+            "TEST FAILED: First multicast at t = 0.0 should succeed."
+        );
+        let result2 = spsn.route(0, &bundle, 6.0, &[])?;
+        assert!(
+            result2.is_some(),
+            "TEST FAILED: Partial cache hit should still return a result for reachable destinations."
+        );
+        assert!(
+            !result2.unwrap().first_hops.is_empty(),
+            "TEST FAILED: RoutingOutput should contain first hops for reachable destinations (dest 2 only)."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_guard_with_priorities_isolates_by_priority() -> Result<(), ASABRError> {
+        let mut spsn = make_spsn(true);
+        let bundle_p1 = make_bundle(4, 1, 5.0, 1000.0);
+        spsn.route(0, &bundle_p1, 0.0, &[1, 2, 3])?;
+        let bundle_p2 = make_bundle(4, 2, 1.0, 1000.0);
+        let result = spsn.route(0, &bundle_p2, 0.0, &[])?;
+
+        assert!(
+            result.is_some(),
+            "TEST FAILED: priority 2 should not be blocked by priority 1 limit."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_guard_without_priorities_ignores_priority() -> Result<(), ASABRError> {
+        let mut spsn = make_spsn(false);
+        let bundle_p1 = make_bundle(4, 1, 5.0, 1000.0);
+        spsn.route(0, &bundle_p1, 0.0, &[1, 2, 3])?;
+        let bundle_p2 = make_bundle(4, 2, 1.0, 1000.0);
+        let result = spsn.route(0, &bundle_p2, 0.0, &[])?;
+
+        assert!(
+            result.is_none(),
+            "TEST FAILED: priority 2 should be blocked by priority 1 limit."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_guard_add_limit_ignores_larger_value() -> Result<(), ASABRError> {
+        let mut spsn = make_spsn(false);
+        let bundle_small = make_bundle(4, 1, 3.0, 1000.0);
+        spsn.route(0, &bundle_small, 0.0, &[1, 2, 3])?;
+        let bundle_large = make_bundle(4, 1, 5.0, 1000.0);
+        spsn.route(0, &bundle_large, 0.0, &[1, 2, 3])?;
+        let bundle_valid = make_bundle(4, 1, 4.0, 1000.0);
+        let result = spsn.route(0, &bundle_valid, 0.0, &[])?;
+
+        assert!(
+            result.is_some(),
+            "TEST FAILED: Guard limit should stay at 3.0, bundle of size 4.0 should not be blocked"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_route_multicast_no_reachable_destinations() -> Result<(), ASABRError> {
+        let mut spsn = make_spsn(false);
+        let bundle = make_multicast_bundle(vec![2, 4], 1, 1.0, 1000.0);
+        let result = spsn.route(0, &bundle, 0.0, &[1, 2, 3])?;
+
+        assert!(
+            result.is_some(),
+            "TEST FAILED: route_multicast always returns Some even with 0 reachable destinations"
+        );
+        assert!(
+            result.unwrap().first_hops.is_empty(),
+            "TEST FAILED: RoutingOutput should have empty first_hops when no destination is reachable"
+        );
+        Ok(())
+    }
+}

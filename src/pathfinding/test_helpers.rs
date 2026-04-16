@@ -289,3 +289,18 @@ pub(crate) fn make_cp() -> ContactPlan<NoManagement, NoManagement, EVLManager> {
     )
     .expect("Failed to create ContactPlan")
 }
+
+pub(crate) fn make_multicast_bundle(
+    destinations: Vec<NodeID>,
+    priority: i8,
+    size: f64,
+    expiration: f64,
+) -> Bundle {
+    Bundle {
+        source: 0,
+        destinations,
+        priority,
+        size,
+        expiration,
+    }
+}
