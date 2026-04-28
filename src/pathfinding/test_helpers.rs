@@ -305,7 +305,7 @@ pub(crate) fn vnode_anycast_graph()
             make_vertex(2, "C", NoManagement {}),
             make_vertex(3, "D", NoManagement {}),
             make_vertex(4, "E", NoManagement {}),
-            Vertex::VNode(5), // VNode V
+            Vertex::VNode(("vnode5".into(), 5)), // VNode V
         ],
         vec![
             make_contact::<NoManagement>(0, 1, 0.0, 2000.0, 100.0, 1.0), // c0: A->B, delay=1.0

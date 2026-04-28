@@ -37,7 +37,7 @@ pub fn pretty_print_multigraph<NM: NodeManager, CM: ContactManager>(graph: &Mult
             let node = graph.real_nodes[vid as usize].borrow();
             format!("node {} \"{}\"", node.info.id, node.info.name)
         } else {
-            format!("vnode {}", vid)
+            format!("vnode {vid}")
         }
     };
 

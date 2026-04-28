@@ -9,7 +9,7 @@ use crate::contact_plan::ContactPlan;
 use crate::errors::ASABRError;
 use crate::node_manager::NodeManager;
 use crate::types::*;
-use crate::vertex::{Vertex, VertexID};
+use crate::vertex::{VNode, Vertex, VertexID};
 
 /// Represents a sender node in a routing system, with associated receivers.
 ///
@@ -95,6 +95,7 @@ pub struct Multigraph<NM: NodeManager, CM: ContactManager> {
     /// The list of node objects.
     pub real_nodes: Vec<Rc<RefCell<Node<NM>>>>,
     /// The total number of nodes in the multigraph.
+    pub virtual_nodes: Vec<VNode>,
     vertex_count: usize,
 }
 
@@ -120,6 +121,7 @@ impl<NM: NodeManager, CM: ContactManager> Multigraph<NM, CM> {
         let vertex_count = contact_plan.vertices.len();
         let virtual_node_count = contact_plan.vnode_map.get_vnode_to_rids_map().len();
         let real_node_count = vertex_count - virtual_node_count;
+        let mut virtual_nodes = Vec::new();
         #[allow(clippy::type_complexity)]
         // Maps contacts to Sender vertex IDs and Receiver vertex IDs.
         let mut snd_rcv_map: HashMap<
@@ -150,7 +152,10 @@ impl<NM: NodeManager, CM: ContactManager> Multigraph<NM, CM> {
                     id
                 }
 
-                Vertex::VNode(vid) => vid,
+                Vertex::VNode((vnode_name, vnode_id)) => {
+                    virtual_nodes.push((vnode_name, vnode_id));
+                    vnode_id
+                }
             };
             senders.push(Sender {
                 vertex_id,
@@ -211,9 +216,11 @@ impl<NM: NodeManager, CM: ContactManager> Multigraph<NM, CM> {
             senders[t as usize].receivers.shrink_to_fit();
         }
 
+        virtual_nodes.shrink_to_fit();
         Ok(Self {
             senders,
             real_nodes: nodes,
+            virtual_nodes,
             vertex_count,
         })
     }

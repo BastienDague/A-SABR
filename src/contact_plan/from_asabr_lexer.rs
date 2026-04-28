@@ -126,7 +126,7 @@ impl<NM: NodeManager, CM: ContactManager> Builder<NM, CM> {
 
     fn add_virtual_node(&mut self, vnode: VirtualNodeInfo) -> Result<(), ASABRError> {
         self.check_new_virtual_id(vnode.vid)?;
-        self.register_name(vnode.name)?;
+        self.register_name(vnode.name.clone())?;
         for rid in &vnode.rids {
             self.check_real_id(*rid)?;
             self.rid_to_vnodes_map
@@ -134,7 +134,7 @@ impl<NM: NodeManager, CM: ContactManager> Builder<NM, CM> {
                 .or_default()
                 .push(vnode.vid);
         }
-        self.vertices.push(Vertex::VNode(vnode.vid));
+        self.vertices.push(Vertex::VNode((vnode.name, vnode.vid)));
         self.vnode_to_rids_map.insert(vnode.vid, vnode.rids);
         Ok(())
     }
